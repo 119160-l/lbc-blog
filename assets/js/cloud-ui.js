@@ -38,7 +38,12 @@
     if (e.code === 'RLS_BLOCKED') return '操作被安全策略拒绝，可能不属于当前账号';
     if (e.code === 'BAD_PATH') return '文件路径不合法';
     if (e.code === 'CLOUD_NOT_READY') return '云服务未就绪：' + (API.failReason || '');
-    return e.message || '操作失败';
+    var m = String(e.message || '');
+    /* 云服务只接受已登记的发布域名，用 file:// 打开或换域名访问时会走这里 */
+    if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
+      return '连不上云服务：请通过已发布的网址打开（' + (CFG.endpoint || '') + '），本地文件直接打开会被浏览器拦截';
+    }
+    return m || '操作失败';
   }
   /* preview_b64 是纯 base64，渲染前做一次白名单校验，避免被塞进 data 以外的协议 */
   function previewSrc(b64) {
