@@ -5,6 +5,18 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* --------------------------------------------------------------------------
+   【必须保留】hidden 属性的兜底规则
+   浏览器内置的 [hidden] { display: none } 来自「UA 样式表」，级联优先级最低。
+   只要作者样式给同一个元素写了 display —— 比如 .cb-mask { display: flex }、
+   .cb-pane { display: grid } —— 就会把它整条盖掉，
+   于是 el.hidden = true 变成一句空操作：属性加上了，画面纹丝不动。
+   表现就是「点了关闭按钮没反应」「两个标签页的面板同时显示」。
+   Normalize.css / sanitize.css 都带这一条；!important 是必需的，
+   否则压不住后面组件类里的 display 声明。
+   -------------------------------------------------------------------------- */
+[hidden] { display: none !important; }
+
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 
 body {
