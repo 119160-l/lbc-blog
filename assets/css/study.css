@@ -1,0 +1,196 @@
+/* ==========================================================================
+   study.css —— 首页「两大板块」/ 课程页 / 归档页
+   只加新组件，不动 style.css 里已有的布局，方便随时回退
+   ========================================================================== */
+
+/* ============================ 首页标题条里的通知 ============================ */
+.notice-strip {
+  margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--glass-line);
+  display: grid; gap: 7px;
+}
+.notice-strip span {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 13px; color: var(--muted);
+}
+.notice-strip span::before {
+  content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); margin-top: 6px;
+}
+.notice-strip time { margin-left: auto; font-size: 12px; color: var(--muted-2); }
+
+/* ============================ 板块 ============================ */
+.sec-block { margin-top: 34px; }
+
+.sec-head {
+  display: flex; align-items: center; gap: 13px;
+  margin: 0 0 7px; flex-wrap: wrap;
+}
+.sec-icon {
+  flex: none; width: 36px; height: 36px; border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 18px rgba(14, 165, 233, .28);
+}
+.sec-head h2 { margin: 0; font-size: 23px; font-weight: 760; letter-spacing: -.3px; }
+.sec-count {
+  font-size: 12.5px; color: var(--accent-2); font-weight: 650;
+  padding: 3px 10px; border-radius: 999px; background: var(--soft-blue);
+}
+.sec-more { margin-left: auto; font-size: 13.5px; font-weight: 650; color: var(--accent-2); }
+.sec-more:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sec-desc { margin: 0 0 18px; font-size: 13.5px; line-height: 1.7; color: var(--muted-2); }
+
+/* ============================ 首页课程卡 ============================ */
+.course-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+}
+.course-card {
+  display: block; padding: 20px 22px 18px;
+  border-radius: var(--radius-lg);
+  transition: transform .22s var(--ease), box-shadow .22s var(--ease), border-color .22s var(--ease);
+}
+.course-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--accent); }
+.cc-head { display: flex; align-items: baseline; gap: 10px; }
+.cc-name { margin: 0; font-size: 17.5px; font-weight: 730; letter-spacing: -.2px; }
+.cc-badge {
+  margin-left: auto; flex: none; font-size: 12px; font-weight: 650;
+  color: var(--accent-2); background: var(--soft-blue);
+  padding: 3px 9px; border-radius: 999px;
+}
+.cc-desc {
+  margin: 9px 0 0; font-size: 13px; line-height: 1.72; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cc-meta {
+  margin-top: 14px; display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--muted-2);
+}
+.cc-meta b { color: var(--accent-2); font-weight: 700; }
+.cc-go {
+  margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650; color: var(--accent-2);
+}
+.course-card:hover .cc-go { gap: 11px; }
+.cc-go span { transition: transform .22s var(--ease); }
+
+/* ============================ 课程页 / 归档页 ============================ */
+.course-hero { padding: 26px 30px 24px; border-radius: var(--radius-lg); margin-bottom: 26px; }
+.course-hero h1 { margin: 0 0 8px; font-size: 27px; font-weight: 780; letter-spacing: -.5px; }
+.course-hero p { margin: 0; font-size: 14px; line-height: 1.75; color: var(--muted); }
+.course-stats {
+  margin-top: 16px; display: flex; gap: 22px; flex-wrap: wrap;
+  font-size: 13px; color: var(--muted-2);
+}
+.course-stats b { display: block; font-size: 19px; font-weight: 760; color: var(--text); }
+
+.stage-block { margin-top: 26px; }
+.stage-title {
+  display: flex; align-items: center; gap: 11px; margin: 0 0 13px;
+  font-size: 15px; font-weight: 730; color: var(--text);
+}
+.stage-title::before {
+  content: ""; width: 4px; height: 16px; border-radius: 2px; flex: none;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+.stage-title em {
+  font-style: normal; font-size: 12.5px; font-weight: 500; color: var(--muted-2);
+  padding: 2px 9px; border-radius: 999px; background: var(--soft-blue);
+}
+
+.chapter-grid {
+  display: grid; gap: 13px;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+}
+.chapter-card { padding: 16px 18px 15px; border-radius: var(--radius); }
+.chapter-card:hover { border-color: var(--accent); }
+.ch-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px; }
+.ch-title { margin: 0; font-size: 15.5px; font-weight: 700; line-height: 1.45; }
+.ch-n { margin-left: auto; flex: none; font-size: 12px; color: var(--muted-2); }
+.ch-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 10px; font-size: 13px;
+  color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--border);
+  transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
+}
+.chip:hover { background: var(--soft-blue); border-color: var(--accent); color: var(--accent-2); }
+.chip i { font-style: normal; font-size: 11px; color: var(--muted-2); }
+.chip:hover i { color: var(--accent-2); }
+/* 篇数少的章不必撑满整行 */
+.chapter-card.wide { grid-column: 1 / -1; }
+
+/* ============================ 首页搜索命中 ============================ */
+.hits-head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; font-size: 13.5px; color: var(--muted-2);
+}
+.hits-head b { color: var(--text); }
+.hits-head button {
+  margin-left: auto; border: 1px solid var(--border); background: var(--panel);
+  color: var(--muted); font: inherit; font-size: 12.5px;
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+}
+.hits-head button:hover { color: var(--accent-2); border-color: var(--accent); background: var(--soft-blue); }
+.hit-list { display: grid; gap: 10px; }
+.hit-row {
+  display: block; padding: 13px 16px; border-radius: var(--radius-sm);
+  background: var(--panel); border: 1px solid var(--border);
+  transition: border-color .18s var(--ease), transform .18s var(--ease);
+}
+.hit-row:hover { border-color: var(--accent); transform: translateX(3px); }
+.hit-row b { display: block; font-size: 14.5px; font-weight: 680; line-height: 1.5; }
+.hit-row span { display: block; margin-top: 4px; font-size: 12.5px; color: var(--muted-2); }
+.hit-row mark { background: rgba(14, 165, 233, .18); color: inherit; border-radius: 3px; padding: 0 2px; }
+
+/* ============================ 文章页补充 ============================ */
+.crumb {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--muted-2); margin-bottom: 14px;
+}
+.crumb a { color: var(--accent-2); }
+.crumb a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.article-loading { padding: 60px 20px; text-align: center; color: var(--muted-2); font-size: 14px; }
+.article-loading.bad { color: #dc2626; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.chip-row .chip { padding: 5px 10px; font-size: 12.5px; background: var(--soft-blue); border-color: transparent; }
+.chip-row .chip.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+
+/* 正文里的图片：原图往往很宽，给个上限免得撑破版心 */
+.markdown-body img { border-radius: 12px; box-shadow: var(--shadow-sm); margin: 8px auto; }
+.markdown-body table img { box-shadow: none; }
+
+/* ============================ KaTeX ============================ */
+.math-block { margin: 16px 0; }
+.katex { font-size: 1.04em; }
+.katex-display {
+  margin: 18px 0; padding: 4px 2px;
+  overflow-x: auto; overflow-y: hidden;   /* 长公式横向滚动，别把页面顶宽 */
+  -webkit-overflow-scrolling: touch;
+}
+.katex-display > .katex { white-space: normal; }
+/* 公式没渲染出来（KaTeX 未加载/语法错）时的兜底显示 */
+.math-inline, .math-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .94em; color: var(--muted);
+  background: var(--soft-blue); border-radius: 5px; padding: 1px 5px;
+}
+
+/* ============================ 响应式 ============================ */
+@media (max-width: 900px) {
+  .course-grid { grid-template-columns: 1fr; }
+  .chapter-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .sec-head h2 { font-size: 20px; }
+  .course-hero { padding: 20px 18px; }
+  .course-hero h1 { font-size: 22px; }
+  .course-stats { gap: 16px; }
+  .chapter-card { padding: 14px 15px; }
+  .chip { padding: 5px 9px; font-size: 12.5px; }
+}
+@media print {
+  .sec-more, .hits-head, .course-grid { display: none !important; }
+}

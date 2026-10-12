@@ -15,6 +15,36 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+  /* esc() 的逆运算：KaTeX 要拿到原始 LaTeX，不能喂 &amp; &lt; 这种实体 */
+  function unesc(s) {
+    return String(s)
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  /* ---------------- 公式：交给 KaTeX ---------------- */
+  function katexOK() {
+    return typeof window !== 'undefined' && window.katex && typeof window.katex.renderToString === 'function';
+  }
+  function renderMath(tex, display, raw) {
+    if (!katexOK()) {                        /* KaTeX 没加载时退化成原样显示 */
+      return '<span class="' + (display ? 'math-block' : 'math-inline') + '">' + esc(raw) + '</span>';
+    }
+    try {
+      return window.katex.renderToString(tex, {
+        displayMode: display,
+        throwOnError: false,                 /* 公式写错不要炸掉整页 */
+        strict: false,
+        trust: false,
+        output: 'html'
+      });
+    } catch (e) {
+      return '<span class="' + (display ? 'math-block' : 'math-inline') + '" title="公式解析失败">' + esc(raw) + '</span>';
+    }
+  }
 
   function store() {
     var items = [];
@@ -44,8 +74,8 @@
     s = s.replace(/`([^`\n]+?)`/g, function (_, c) { return st.put('<code>' + c + '</code>'); });
 
     // 行内数学 $...$（开 `$` 后不接空格、闭 `$` 前不接空格且后不接数字，规避货币误判）
-    s = s.replace(/\$(?!\s)((?:[^$\\\n]|\\.)+?)(?<!\s)\$(?!\d)/g, function (m) {
-      return st.put('<span class="math-inline">' + m + '</span>');
+    s = s.replace(/\$(?!\s)((?:[^$\\\n]|\\.)+?)(?<!\s)\$(?!\d)/g, function (m, tex) {
+      return st.put(renderMath(unesc(tex), false, m));
     });
 
     // 图片
@@ -168,7 +198,9 @@
           i++; buf.push(lines[i]);
           if (/\$\$\s*$/.test(lines[i])) closed = true;
         }
-        out.push('<div class="math-block">' + esc(buf.join('\n').trim()) + '</div>');
+        var raw = buf.join('\n').trim();
+        var tex = raw.replace(/^\$\$/, '').replace(/\$\$$/, '').trim();
+        out.push('<div class="math-block">' + renderMath(unesc(tex), true, raw) + '</div>');
         i++; continue;
       }
 

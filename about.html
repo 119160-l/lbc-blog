@@ -12,6 +12,8 @@
 <link rel="stylesheet" href="assets/css/style.css">
 <link rel="stylesheet" href="assets/css/effects.css">
 <link rel="stylesheet" href="assets/css/cloud.css">
+<link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="assets/css/study.css">
 </head>
 <body data-page="about">
 <div id="siteHeaderMount"></div>
@@ -23,10 +25,10 @@
           <p>你好，欢迎来到<strong>知行手记</strong>。这是我用来记录学习与生活的个人博客。</p>
 
           <h2>这里会写些什么</h2>
+          <p>全站只分两个板块，不多不少：</p>
           <ul>
-            <li><strong>学习资料</strong>：课程资料、书单、网站工具的收集整理</li>
-            <li><strong>学习笔记</strong>：专业课的学习笔记、错题与思考总结</li>
-            <li><strong>生活感想</strong>：日常的碎碎念、读到的好句子、阶段性的小感悟</li>
+            <li><strong>学习资料</strong>：目前有复变函数与积分变换、概率论与数理统计、自动控制原理、矩阵论、运筹学 5 门课。每一门都按 <strong>课程 → 阶段 → 章 → 篇</strong> 归档，和本地文件夹一一对应，每章通常配着「公式推导 / 知识讲解 / 练习题 / 仿真与绘图」几篇。</li>
+            <li><strong>生活随笔</strong>：日常的碎碎念、读到的好句子、阶段性的小感悟。这个板块先留了位置，想写的时候随时加。</li>
           </ul>
 
           <h2>为什么写博客</h2>
@@ -37,8 +39,11 @@
 
           <h2>站点说明</h2>
           <ul>
-            <li>内容用 Markdown 写，公式与代码块都能正常显示</li>
-            <li>支持浅色 / 深色主题，点右上角切换</li>
+            <li>内容用 Markdown 写，和 Obsidian 里的是同一份文件</li>
+            <li><strong>公式用 KaTeX 排版</strong>：行内 <code>$...$</code>、块级 <code>$$...$$</code> 都按数学公式显示，长公式可以横向滑动</li>
+            <li>全站零外链：KaTeX、云 SDK 等第三方库都放在本地，断网也能正常打开</li>
+            <li>支持浅色 / 深色主题，点右上角切换；页面发涩时页脚可以切「流畅模式」</li>
+            <li>每个课程页自带搜索，一键在整门课里找章节和篇目</li>
             <li>每篇文章底部都有<strong>留言板</strong>，不用注册、不用登录，填个昵称就能留言</li>
             <li>文章里的配图与附件托管在云存储上，博主登录后可直接在页面里上传，不必改文件</li>
             <li>没有广告、没有追踪；只有「上传配图」这一件事需要博主本人登录</li>
@@ -53,10 +58,12 @@
 </main>
 <div id="siteFooterMount"></div>
 <div id="mobileNavMount"></div>
+<script src="assets/vendor/katex/katex.min.js"></script>
 <script src="assets/js/site.js"></script>
-<script src="assets/js/posts.js"></script>
+<script src="assets/js/catalog.js"></script>
 <script src="assets/js/md.js"></script>
 <script src="assets/js/app.js"></script>
+<script src="assets/js/study.js"></script>
 <script src="assets/vendor/workbuddy-cloud/index.global.js"></script>
 <script src="assets/js/cloud-config.js"></script>
 <script src="assets/js/cloud.js"></script>

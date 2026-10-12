@@ -183,12 +183,11 @@
 
   /* ------------------------------ 页面骨架 ------------------------------ */
   function navbarHTML(active) {
+    /* 全站只有两个板块：学习资料 / 生活随笔，导航直接对应 */
     var items = [
       { href: 'index.html', label: '首页', key: 'home' },
-      { href: 'index.html?cat=' + encodeURIComponent(CATS[0] || ''), label: CATS[0], key: 'c0' },
-      { href: 'index.html?cat=' + encodeURIComponent(CATS[1] || ''), label: CATS[1], key: 'c1' },
-      { href: 'index.html?cat=' + encodeURIComponent(CATS[2] || ''), label: CATS[2], key: 'c2' },
-      { href: 'archive.html', label: '归档', key: 'archive' },
+      { href: 'index.html#study', label: '学习资料', key: 'study' },
+      { href: 'archive.html', label: '按章节浏览', key: 'archive' },
       { href: 'about.html', label: '关于', key: 'about' }
     ];
     var selCat = PARAM.get('cat') || '';
@@ -513,28 +512,34 @@
     }
 
     var p = POSTS[idx];
-    var prev = POSTS[idx + 1];
-    var next = POSTS[idx - 1];
+    var course = (window.StudyUI && StudyUI.courseOf) ? StudyUI.courseOf(p.course) : null;
+    /* 上一篇 / 下一篇按「同一门课内的顺序」走，跟课程页的目录一致 */
+    var siblings = p.course ? POSTS.filter(function (x) { return x.course === p.course; }) : POSTS;
+    var si = siblings.indexOf(p);
+    var prev = si > 0 ? siblings[si - 1] : null;
+    var next = si >= 0 && si < siblings.length - 1 ? siblings[si + 1] : null;
 
     main.innerHTML = '<div class="container"><div class="article-shell">' +
       '<article class="article-reader glass enter">' +
-        '<a class="back-link" href="index.html">← 返回首页</a>' +
+        '<div class="crumb">' +
+          '<a href="index.html">首页</a><span>›</span>' +
+          (course ? '<a href="course.html?c=' + encodeURIComponent(course.key) + '">' + esc(course.name) + '</a><span>›</span>' : '') +
+          '<span>' + esc(p.chapter || '') + '</span>' +
+        '</div>' +
         '<header class="article-header">' +
-          '<span class="tag ' + catClass(p.category) + '">' + esc(p.category || '未分类') + '</span>' +
+          '<span class="tag ' + catClass(p.kind) + '">' + esc(p.kind || '资料') + '</span>' +
           '<h1>' + esc(p.title) + '</h1>' +
           '<div class="meta-row">' +
+            (p.stage ? '<span>' + esc(p.stage) + '</span><span>·</span>' : '') +
             '<span>' + fmtDateCN(p.date) + '</span><span>·</span>' +
             '<span>约 ' + minutes(p) + ' 分钟</span><span>·</span>' +
             '<span>' + (p.chars || 0) + ' 字</span>' +
-            ((p.tags || []).length ? '<span>·</span><span>' + p.tags.map(function (t) {
-              return '<a href="index.html?tag=' + encodeURIComponent(t) + '" style="color:var(--accent-2);">#' + esc(t) + '</a>';
-            }).join(' ') + '</span>' : '') +
           '</div>' +
         '</header>' +
-        '<div class="markdown-body" id="postBody">' + window.BlogMD.render(p.body || '') + '</div>' +
+        '<div class="markdown-body" id="postBody"><div class="article-loading">正在取正文…</div></div>' +
         '<div class="pager">' +
-          (next ? '<a class="press" href="article.html?id=' + encodeURIComponent(next.id || next.slug) + '"><span class="lbl">← 上一篇</span><span class="ttl">' + esc(next.title) + '</span></a>' : '<span></span>') +
-          (prev ? '<a class="press right" href="article.html?id=' + encodeURIComponent(prev.id || prev.slug) + '"><span class="lbl">下一篇 →</span><span class="ttl">' + esc(prev.title) + '</span></a>' : '<span></span>') +
+          (prev ? '<a class="press" href="article.html?id=' + encodeURIComponent(prev.id) + '"><span class="lbl">← 上一篇</span><span class="ttl">' + esc(prev.title) + '</span></a>' : '<span></span>') +
+          (next ? '<a class="press right" href="article.html?id=' + encodeURIComponent(next.id) + '"><span class="lbl">下一篇 →</span><span class="ttl">' + esc(next.title) + '</span></a>' : '<span></span>') +
         '</div>' +
       '</article>' +
       '<div id="tocMount"></div>' +
@@ -544,13 +549,57 @@
     var md = document.querySelector('meta[name="description"]');
     if (md && p.excerpt) md.setAttribute('content', p.excerpt);
 
-    initCodeCopy($('#postBody'));
-    buildToc();
-    initReveal();
-    initProgress();
+    /* 正文按需取：两百多篇正文合起来 3.6MB，全内联会把首页拖死 */
+    loadBody(p).then(function (body) {
+      var box = $('#postBody');
+      if (!box) return;
+      box.innerHTML = window.BlogMD.render(body);
+      fixImagePaths(box, p);
+      initCodeCopy(box);
+      buildToc();
+      initReveal();
+      initProgress();
+    }).catch(function (e) {
+      var box = $('#postBody');
+      if (box) {
+        box.innerHTML = '<div class="article-loading bad">正文加载失败：' + esc(e.message || e) +
+          '<br><span style="font-size:13px;">用 file:// 双击打开时浏览器会拦截本地 fetch，' +
+          '请通过已发布的网址访问。</span></div>';
+      }
+    });
 
-    /* 文章底部的「配图与附件」「留言板」由 cloud-ui.js 负责挂载 */
+    /* 文章底部的「配图与附件」「留言板」由 cloud-ui.js 负责挂载 ——
+       它挂在 pager 之后，所以要在上面的 innerHTML 写完之后再调用 */
     if (window.BlogCloud && window.BlogCloud.mountArticle) window.BlogCloud.mountArticle(p);
+  }
+
+  /* 取正文：优先用内存/HTTP 缓存，正文文件是静态的，基本只取一次 */
+  function loadBody(p) {
+    if (p.body) return Promise.resolve(p.body);
+    if (p._body) return Promise.resolve(p._body);
+    if (!global_fetch()) return Promise.reject(new Error('当前环境不支持 fetch'));
+    return fetch(p.file, { cache: 'force-cache' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + '（' + p.file + '）');
+      return r.text();
+    }).then(function (t) {
+      p._body = String(t).replace(/^\uFEFF/, '').replace(/^\s*#[ \t]+.*(?:\r?\n|$)/, '').trim();
+      return p._body;
+    });
+  }
+  function global_fetch() { try { return typeof fetch === 'function'; } catch (e) { return false; } }
+
+  /* 正文里的图片是相对 Markdown 自己所在目录写的（figures/xxx.png），
+     直接渲染会按 article.html 的目录去解析而 404 —— 这里补上目录前缀 */
+  function fixImagePaths(box, p) {
+    var dir = String(p.file || '').replace(/[^/]*$/, '');
+    if (!dir) return;
+    $$('img', box).forEach(function (im) {
+      var s = im.getAttribute('src') || '';
+      if (im.getAttribute('loading') === null) im.setAttribute('loading', 'lazy');
+      if (im.getAttribute('decoding') === null) im.setAttribute('decoding', 'async');
+      if (/^(https?:|data:|blob:|\/)/i.test(s)) return;
+      im.setAttribute('src', '/' + dir + s.replace(/^\.\//, ''));
+    });
   }
 
   function buildToc() {
@@ -673,9 +722,10 @@
     if ($('#themeBtn')) $('#themeBtn').innerHTML = svg(currentTheme === 'dark' ? 'sun' : 'moon', 17);
     initFx();
 
-    if (PAGE === 'home')    renderHome();
+    if (PAGE === 'home')    { if (window.StudyUI) StudyUI.renderHome(); else renderHome(); }
+    if (PAGE === 'course')  { if (window.StudyUI) StudyUI.renderCourse(); }
     if (PAGE === 'article') renderArticle();
-    if (PAGE === 'archive') renderArchive();
+    if (PAGE === 'archive') { if (window.StudyUI) StudyUI.renderArchive(); else renderArchive(); }
     if (PAGE === 'about')   renderAbout();
 
     initGlass();
@@ -687,6 +737,16 @@
       if (i) setTimeout(function () { i.focus(); }, 300);
     }
   }
+
+  /* study.js 重绘板块（搜索/切课）之后要重新挂一次滚动揭示，旧元素靠 dataset.rv 去重 */
+  window.KIT_AFTER_RENDER = function () { initReveal(); };
+
+  /* 把渲染要用的工具函数暴露给 study.js，免得两边各写一套 */
+  window.SiteKit = {
+    S: S, esc: esc, $: $, $$: $$, svg: svg, POSTS: POSTS,
+    fmtDate: fmtDate, fmtDateCN: fmtDateCN, relDate: relDate,
+    minutes: minutes, THEME_KEY: THEME_KEY
+  };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
