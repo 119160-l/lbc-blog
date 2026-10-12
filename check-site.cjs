@@ -1,0 +1,230 @@
+/* ==========================================================================
+   check-site.cjs —— 发布前的整页回归校验（46 项断言）
+
+   用法：
+     /Users/lbc/.workbuddy/binaries/node/versions/22.22.2-6/bin/node check-site.cjs
+     通过时输出「✅ 全部通过（N 项）」，失败时逐条列出并 exit 1。
+
+   覆盖：
+     1. 首页只放两个板块入口（学习资料可点 / 生活随笔锁定 + 敬请期待、无科目卡片、无搜索框）
+     2. 学习资料页 5 个科目卡 + 搜索框 + 9 条教材
+     3. 课文区：整行可点 → 阅读层（iframe src、标题、页数、锁滚动、地址栏 #read=）
+     4. 阅读层三种关闭方式 + 点「下载」不误开层 + Enter 可开
+     5. #read=<id> 直链自动进阅读层
+     6. 课程页只列本课 PDF，且不预加载 iframe
+     7. 9 秒未加载出来的兜底按钮
+     8. 矩阵论两篇知识讲解的 7 张配图全部落地（src 存在 / loading=lazy / alt 未被污染）
+
+   关键实现说明（别改成别的写法，会静默失效）：
+     - jsdom 30 不再执行外链 <script src>，所以这里把脚本正文**内联**进 HTML 再交给 jsdom；
+       文件缺失会插一条注释并记成失败，避免「页面没渲染」被误读成断言写错。
+     - 站点取正文用的是相对地址 fetch('posts/x.md')，打桩时必须先 `new w.URL(u, 'https://site.local/')`，
+       否则会漏掉并退到 Node 原生 fetch → 一律 404。
+   ========================================================================== */
+/* 发布前整页校验：把 <script src> 内联进 HTML 再交给 jsdom（jsdom 30 不再执行外链脚本） */
+const fs = require('fs');
+const path = require('path');
+const ROOT = '/Users/lbc/WorkBuddy/Claw/lbc-blog';
+const { JSDOM, VirtualConsole } = require('/Users/lbc/.workbuddy/binaries/node/workspace/node_modules/jsdom');
+
+const problems = [];
+let checks = 0;
+function ok() { checks++; }
+function bad(name, detail) { checks++; problems.push(name + (detail ? ' —— ' + detail : '')); }
+function assert(cond, name, detail) { cond ? ok() : bad(name, detail); }
+
+function inlineScripts(html) {
+  const missing = [];
+  const out = html.replace(/<script\s+src="([^"]+)"([^>]*)><\/script>/g, (m, src, rest) => {
+    if (/^https?:/.test(src)) return m;
+    const p = path.join(ROOT, src.split('?')[0]);
+    if (!fs.existsSync(p)) { missing.push(src); return `<!-- 缺文件：${src} -->`; }
+    const body = fs.readFileSync(p, 'utf8').replace(/<\/script/gi, '<\\/script');
+    return `<script${rest}>${body}</script>`;
+  });
+  return { html: out, missing };
+}
+
+async function loadPage(rel, urlOverride) {
+  const html = fs.readFileSync(path.join(ROOT, rel.split('?')[0]), 'utf8');
+  const { html: inlined, missing } = inlineScripts(html);
+  const url = 'https://site.local/' + (urlOverride || rel);
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', () => { });   /* 点 <a download> 会报「not implemented: navigation」，忽略 */
+  const dom = new JSDOM(inlined, {
+    url, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
+    beforeParse(w) {
+      w.matchMedia = () => ({ matches: false, addListener() { }, removeListener() { }, addEventListener() { }, removeEventListener() { } });
+      const of = w.fetch;
+      w.fetch = function (u) {
+        let s = null;
+        try { s = new w.URL(String(u), 'https://site.local/'); } catch (e) { }
+        if (s && s.host === 'site.local') {
+          const p = path.join(ROOT, decodeURIComponent(s.pathname.replace(/^\//, '')));
+          return fs.existsSync(p)
+            ? Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(fs.readFileSync(p, 'utf8')) })
+            : Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve('') });
+        }
+        if (of) return of.apply(this, arguments);
+        return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve('') });
+      };
+      if (w.HTMLCanvasElement) w.HTMLCanvasElement.prototype.getContext = () => null;
+    }
+  });
+  await new Promise((res) => {
+    if (dom.window.document.readyState === 'complete') return res();
+    dom.window.addEventListener('load', res);
+    setTimeout(res, 2500);
+  });
+  await new Promise((r) => setTimeout(r, 500));
+  if (missing.length) bad(`${rel} 脚本缺失`, missing.join(', '));
+  return { w: dom.window, d: dom.window.document };
+}
+
+const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Object.assign({ bubbles: true, cancelable: true }, init)));
+
+(async () => {
+  /* ---------- 1. 首页 ---------- */
+  {
+    const { d } = await loadPage('index.html');
+    const brand = (d.querySelector('.logo-text') || {}).textContent || '';
+    assert(brand.trim() === '半亩方塘', '首页站名', JSON.stringify(brand));
+    const entries = d.querySelectorAll('#main .sec-entry');
+    assert(entries.length === 2, '首页板块数', entries.length + ' 个');
+    const links = d.querySelectorAll('#main a.sec-entry');
+    assert(links.length === 1 && /library\.html$/.test(links[0].getAttribute('href')), '首页可点板块', links.length + ' 个');
+    const locked = d.querySelectorAll('#main .sec-entry.is-locked');
+    assert(locked.length === 1 && /敬请期待/.test(locked[0].textContent), '生活随笔锁定态');
+    assert(d.querySelectorAll('#main .course-card').length === 0, '首页不该出现科目卡片');
+    assert(d.querySelectorAll('#main input[type="search"], #main .search-input').length === 0, '首页不该有搜索框');
+    const css = fs.readFileSync(path.join(ROOT, 'assets/css/style.css'), 'utf8');
+    assert(/\[hidden\][^{]*\{[^}]*display:\s*none\s*!important/.test(css), '[hidden] 保护规则丢了');
+  }
+
+  /* ---------- 2. 学习资料页：科目层 + 搜索 + 在线阅读区 ---------- */
+  let html = null, win = null, rows = null;
+  {
+    const { w, d } = await loadPage('library.html');
+    html = d; win = w;
+    const cards = d.querySelectorAll('#main .course-card');
+    assert(cards.length === 5, '科目卡片数', cards.length + ' 个');
+    assert(d.querySelector('#main input[type="search"], #main .search-input'), '资料页缺搜索框');
+    rows = [...d.querySelectorAll('#main .dl-row')];
+    assert(rows.length === 9, '教材条目数', rows.length + ' 条');
+    assert(rows.every((r) => r.tagName === 'DIV' && r.getAttribute('data-fid')), '每行都是可点的 div + data-fid');
+    assert(rows.every((r) => r.querySelector('.dl-ico svg')), '每行都有图标');
+    assert(rows.every((r) => r.querySelector('.dl-go') && /在线阅读/.test(r.querySelector('.dl-go').textContent)), '每行都有「在线阅读」提示');
+    const dls = rows.map((r) => r.querySelector('[data-dl]'));
+    assert(dls.every((a) => a && /^files\/.+\.pdf$/.test(a.getAttribute('href')) && a.hasAttribute('download')), '每行都保留下载小按钮');
+    assert(rows.every((r) => !/href="files/.test(r.outerHTML.replace(/<a class="dl-mini"[\s\S]*?<\/a>/g, ''))), '整行不再是下载链接');
+  }
+
+  /* ---------- 3. 点一行 → 就地打开阅读层 ---------- */
+  {
+    const d = html, w = win;
+    const row = rows[0];
+    const fid = row.getAttribute('data-fid');
+    const pdf = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/files.js'), 'utf8')
+      .match(/window\.BLOG_FILES = (\[[\s\S]*\]);/)[1]).find((f) => f.id === fid);
+
+    fire(w, row, 'click');
+    const mask = d.getElementById('pdfMask');
+    assert(mask, '阅读层已创建');
+    assert(mask && !mask.hidden, '点一下就该打开阅读层');
+    const fr = d.getElementById('pdfFrame');
+    assert(fr.getAttribute('src') === pdf.file + '#view=FitH', 'iframe 指向 PDF', fr.getAttribute('src'));
+    assert(d.getElementById('pdfTitle').textContent === pdf.title, '标题填对了');
+    assert(/页/.test(d.getElementById('pdfSub').textContent), '副标题带页数', d.getElementById('pdfSub').textContent);
+    assert(d.getElementById('pdfNew').getAttribute('href') === pdf.file, '「新窗口」链接正确');
+    assert(d.getElementById('pdfDl').getAttribute('href') === pdf.file, '「下载」链接正确');
+    assert(d.documentElement.classList.contains('pdf-lock'), '打开时锁住页面滚动');
+    assert(d.location.hash === '#read=' + encodeURIComponent(fid), '地址栏带上 #read=', d.location.hash);
+
+    /* 关闭按钮 */
+    fire(w, d.getElementById('pdfClose'), 'click');
+    assert(mask.hidden, '点「关闭」能收起');
+    assert(fr.getAttribute('src') === 'about:blank', '关闭时清空 iframe 释放内存', fr.getAttribute('src'));
+    assert(!d.documentElement.classList.contains('pdf-lock'), '关闭后恢复滚动');
+
+    /* 再开一次，点遮罩关闭 */
+    fire(w, row, 'click');
+    assert(!mask.hidden, '能再次打开');
+    fire(w, mask, 'click');
+    assert(mask.hidden, '点遮罩能关闭');
+
+    /* Esc 关闭 */
+    fire(w, row, 'click');
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(mask.hidden, 'Esc 能关闭');
+
+    /* 点下载小按钮不该打开阅读层 */
+    fire(w, row, 'click');
+    fire(w, d.getElementById('pdfClose'), 'click');
+    fire(w, row.querySelector('[data-dl]'), 'click');
+    assert(mask.hidden, '点「下载」不会误开阅读层');
+
+    /* 键盘 Enter 也能打开 */
+    row.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert(!mask.hidden, '行上按 Enter 能打开');
+    fire(w, d.getElementById('pdfClose'), 'click');
+  }
+
+  /* ---------- 4. 直链 #read=<id> 打开就是那一本 ---------- */
+  {
+    const { d } = await loadPage('library.html', 'library.html#read=f-or-textbook-5ed');
+    const fr = d.getElementById('pdfFrame');
+    const mask = d.getElementById('pdfMask');
+    assert(mask && !mask.hidden, '带 #read= 打开时自动进入阅读层');
+    assert(fr && /or-textbook-5ed\.pdf/.test(fr.getAttribute('src') || ''), '直链指向对的那本', fr && fr.getAttribute('src'));
+  }
+
+  /* ---------- 5. 课程页同样能读，且只列本课的 ---------- */
+  {
+    const { d } = await loadPage('course.html?c=control');
+    const list = [...d.querySelectorAll('#main .dl-row')];
+    assert(list.length >= 1 && list.length < 9, '课程页只列本课 PDF', list.length + ' 条');
+    const fr = d.getElementById('pdfFrame');
+    assert(!fr, '未点之前不预加载 iframe（避免白拖几十 MB）');
+  }
+
+  /* ---------- 6. 矩阵论知识讲解：7 张新配图 ---------- */
+  for (const [id, want] of [['matrix-5adf47', 3], ['matrix-019195', 4]]) {
+    const { d } = await loadPage('article.html?id=' + id, 'article.html?id=' + id);
+    const body = d.getElementById('postBody') || d.querySelector('#main');
+    const imgs = [...body.querySelectorAll('img')];
+    assert(imgs.length === want, id + ' 图片数', imgs.length + ' 张，期望 ' + want);
+    const bads = [];
+    for (const im of imgs) {
+      const src = im.getAttribute('src') || '';
+      if (!/^\/posts\//.test(src)) { bads.push('src 异常 ' + src); continue; }
+      if (!fs.existsSync(path.join(ROOT, src))) bads.push('文件不存在 ' + src);
+      if (im.getAttribute('loading') !== 'lazy') bads.push('丢 loading=lazy ' + src);
+      const alt = im.getAttribute('alt') || '';
+      if (alt.includes('<') || alt.includes('"')) bads.push('alt 被污染 ' + src);
+    }
+    assert(!bads.length, id + ' 配图', bads.join(' | '));
+    assert(d.querySelectorAll('#postBody .img-missing, #main .img-missing').length === 0, id + ' 仍有「配图缺失」占位');
+  }
+
+  /* ---------- 7. 加载超时的兜底：9 秒后给出「用系统阅读器打开」 ---------- */
+  {
+    const { w, d } = await loadPage('library.html');
+    const row = d.querySelectorAll('#main .dl-row')[0];
+    const fid = row.getAttribute('data-fid');
+    fire(w, row, 'click');
+    await new Promise((r) => setTimeout(r, 9600));
+    const st = d.getElementById('pdfStatus');
+    assert(!st.hidden, '超时提示仍然可见');
+    assert(/pdf-slow/.test(st.innerHTML), '超时后切换到兜底版式');
+    const alt = st.querySelector('a.pdf-btn');
+    assert(alt && /^files\/.+\.pdf$/.test(alt.getAttribute('href')) && alt.getAttribute('target') === '_blank',
+      '兜底按钮指向 PDF 且新窗口打开', alt && alt.getAttribute('href'));
+    assert(d.getElementById('pdfFrame').getAttribute('src') ===
+      JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/files.js'), 'utf8')
+        .match(/window\.BLOG_FILES = (\[[\s\S]*\]);/)[1]).find((f) => f.id === fid).file + '#view=FitH',
+      '兜底出现时 iframe 仍在等同一个文件');
+  }
+
+  console.log(problems.length ? '\n❌ 失败：\n - ' + problems.join('\n - ') : `\n✅ 全部通过（${checks} 项）`);
+  process.exit(problems.length ? 1 : 0);
+})();
