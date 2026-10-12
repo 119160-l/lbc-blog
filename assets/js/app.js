@@ -196,7 +196,7 @@
     return '<header class="site-header glass" id="siteHeader"><div class="navbar">' +
       '<a class="logo" href="index.html">' +
         '<span class="logo-mark">' + esc(S.logoText || '知') + '</span>' +
-        '<span class="logo-text">' + esc(S.name || '知行手记') + '</span>' +
+        '<span class="logo-text">' + esc(S.name || '半亩方塘') + '</span>' +
       '</a>' +
       '<nav class="nav-links" id="navLinks">' +
         items.map(function (it) {
