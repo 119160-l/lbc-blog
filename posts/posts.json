@@ -1,0 +1,26 @@
+[
+  {
+    "id": "control-theory-resources",
+    "title": "自动控制原理学习资料整理（持续更新）",
+    "date": "2026-10-12",
+    "category": "学习资料",
+    "excerpt": "整理了自控的网课、教材、习题集以及 MATLAB 相关资源，按「先修基础 → 正课 → 刷题 → 仿真」的顺序排列，持续更新。",
+    "file": "posts/control-theory-resources.md"
+  },
+  {
+    "id": "laplace-notes",
+    "title": "拉普拉斯变换入门笔记：为什么学控制要先学它",
+    "date": "2026-10-10",
+    "category": "学习笔记",
+    "excerpt": "听自控课一头雾水？多半是拉氏变换没过。这篇笔记用最少的数学把常用变换对、三大性质和终值定理理清楚，文末附做题步骤。",
+    "file": "posts/laplace-notes.md"
+  },
+  {
+    "id": "first-day-blogging",
+    "title": "开始写博客的第一天",
+    "date": "2026-10-08",
+    "category": "生活感想",
+    "excerpt": "折腾了一个晚上，博客终于搭起来了。不追求完美，先写起来再说——毕竟完成比完美重要。",
+    "file": "posts/first-day-blogging.md"
+  }
+]

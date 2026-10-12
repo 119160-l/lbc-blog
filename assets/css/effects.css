@@ -1,0 +1,162 @@
+/* ==========================================================================
+   effects.css —— 液态玻璃 + 交互动效
+   ========================================================================== */
+
+/* ============================ 背景光斑（玻璃需要有东西可折射） ============================ */
+.bg-blobs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.bg-blobs i {
+  position: absolute; display: block; border-radius: 50%;
+  filter: blur(70px); opacity: .5;
+  animation: blobFloat 26s ease-in-out infinite;
+}
+.bg-blobs i:nth-child(1) { width: 480px; height: 480px; top: -140px; left: -80px;  background: #bae6fd; animation-delay: 0s; }
+.bg-blobs i:nth-child(2) { width: 420px; height: 420px; top: 22%;   right: -120px; background: #ddd6fe; animation-delay: -8s; }
+.bg-blobs i:nth-child(3) { width: 380px; height: 380px; bottom: 6%;  left: 16%;    background: #fef3c7; animation-delay: -15s; }
+[data-theme="dark"] .bg-blobs i { opacity: .30; }
+[data-theme="dark"] .bg-blobs i:nth-child(1) { background: #0ea5e9; }
+[data-theme="dark"] .bg-blobs i:nth-child(2) { background: #6366f1; }
+[data-theme="dark"] .bg-blobs i:nth-child(3) { background: #0d9488; }
+
+@keyframes blobFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(40px, -34px, 0) scale(1.08); }
+  66%      { transform: translate3d(-30px, 26px, 0) scale(.94); }
+}
+
+/* ============================ 液态玻璃基类 ============================ */
+.glass {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-line);
+  box-shadow:
+    var(--shadow),
+    var(--glass-inner),
+    0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+
+/* 随指针流动的高光 —— 玻璃的「液态」来源 */
+.glass::before {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit; pointer-events: none;
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 0%),
+    var(--glass-sheen), transparent 62%);
+  opacity: 0;
+  transition: opacity .38s var(--ease);
+}
+.glass:hover::before { opacity: 1; }
+
+/* 玻璃厚度：底部一圈更亮的折射边 */
+.glass::after {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit; pointer-events: none;
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--glass-sheen) 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-sheen) 85%, transparent);
+  opacity: .7;
+}
+.glass > * { position: relative; z-index: 1; }
+
+/* 纯色面板（不需要透视的） */
+.solid {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* 吸顶导航的玻璃更实一些，滚动后收紧 */
+.site-header.glass {
+  background: var(--glass-bg-2);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+  transition: box-shadow .3s var(--ease), background .3s var(--ease);
+}
+.site-header.scrolled {
+  box-shadow: var(--shadow-sm);
+  background: var(--glass-bg-2);
+}
+
+/* ============================ 点击涟漪 ============================ */
+.ripple-host { position: relative; overflow: hidden; isolation: isolate; }
+.ripple {
+  position: absolute; z-index: 3; pointer-events: none;
+  border-radius: 50%; transform: scale(0); opacity: .9;
+  background: radial-gradient(circle, var(--ripple, rgba(14, 165, 233, .34)) 0%, transparent 68%);
+  animation: rippleOut .62s var(--ease) forwards;
+}
+@keyframes rippleOut {
+  to { transform: scale(2.4); opacity: 0; }
+}
+
+/* ============================ 按压反馈 ============================ */
+.press { transition: transform .16s var(--ease); }
+.press:active { transform: scale(.972); }
+.btn:active, .pill:active, .icon-btn:active, .nav-links a:active { transform: scale(.96); }
+.post-card:active { transform: translateY(-1px) scale(.994); }
+
+/* 按钮上的高光扫过 */
+.btn, .pill, .icon-btn { position: relative; overflow: hidden; }
+.btn::after, .pill::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 44%;
+  left: -60%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .45), transparent);
+  transition: left .55s var(--ease);
+}
+.btn:hover::after, .pill:hover::after { left: 118%; }
+
+/* ============================ 入场与滚动揭示 ============================ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+.enter { animation: fadeUp .62s var(--ease) both; }
+
+.reveal { opacity: 0; transform: translateY(20px); }
+.reveal.in {
+  opacity: 1; transform: none;
+  transition: opacity .62s var(--ease), transform .62s var(--ease);
+}
+
+/* 页面切换淡出 */
+body.leaving { opacity: 0; transition: opacity .22s var(--ease); }
+
+/* ============================ 主题切换：圆形展开 ============================ */
+@supports (view-transition-name: root) {
+  ::view-transition-old(root) { animation: none; }
+  ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+  .theme-circle {
+    position: fixed; inset: 0; z-index: 999; pointer-events: none;
+    background: var(--theme-flash);
+    clip-path: circle(0 at var(--cx, 50%) var(--cy, 0%));
+    animation: themeCircle .62s var(--ease) forwards;
+  }
+  @keyframes themeCircle {
+    to { clip-path: circle(150vmax at var(--cx, 50%) var(--cy, 0%)); }
+  }
+}
+/* 不支持圆形展开时退化为颜色渐变（令牌本身有 transition 会更顺） */
+body, .glass, .solid, .panel, .post-card, .btn, .pill, .tag {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: .32s;
+  transition-timing-function: var(--ease);
+}
+.post-card { transition-property: transform, box-shadow, border-color, background-color; }
+
+/* ============================ 无障碍：尊重减少动效 ============================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+  .bg-blobs i { animation: none; }
+}
+
+/* 触屏设备不做指针高光（没有 hover） */
+@media (hover: none) {
+  .glass::before { display: none; }
+}

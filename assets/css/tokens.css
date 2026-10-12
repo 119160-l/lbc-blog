@@ -1,0 +1,74 @@
+/* ==========================================================================
+   tokens.css —— 设计令牌
+   数值取自参考站 songline-blog 的 theme-vars.css 与 foundation.css
+   ========================================================================== */
+
+:root {
+  /* ---- 浅色（默认） ---- */
+  --bg:        #fbfaf7;
+  --panel:     #fffdfa;
+  --panel-2:   #f7fbfe;
+  --text:      #15345b;
+  --muted:     #64748b;
+  --muted-2:   #8aa0b8;
+  --border:    #e7edf3;
+  --accent:    #0ea5e9;
+  --accent-2:  #2563eb;
+  --soft-blue: #eaf6ff;
+  --warm:      #fff5e7;
+
+  --shadow:    0 18px 45px rgba(55, 84, 120, .08);
+  --shadow-sm: 0 8px 22px rgba(55, 84, 120, .06);
+  --shadow-lg: 0 30px 70px rgba(39, 74, 112, .16);
+
+  /* ---- 形状 ---- */
+  --radius:    18px;
+  --radius-lg: 24px;
+  --radius-sm: 12px;
+  --max:       1280px;
+
+  /* ---- 液态玻璃 ---- */
+  --glass-bg:     rgba(255, 253, 250, .58);
+  --glass-bg-2:   rgba(255, 253, 250, .76);
+  --glass-line:   rgba(255, 255, 255, .62);
+  --glass-blur:   22px;
+  --glass-sat:    180%;
+  --glass-inner:  inset 0 1px 0 rgba(255, 255, 255, .85);
+  --glass-sheen:  rgba(255, 255, 255, .55);
+
+  --header-h: 86px;
+  --ease:     cubic-bezier(.22, .68, .28, 1);
+}
+
+/* ---- 深色 ---- */
+[data-theme="dark"] {
+  --bg:        #0f172a;
+  --panel:     #111c2e;
+  --panel-2:   #13233a;
+  --text:      #e6f0ff;
+  --muted:     #a8bad1;
+  --muted-2:   #7e91aa;
+  --border:    #243449;
+  --accent:    #38bdf8;
+  --accent-2:  #60a5fa;
+  --soft-blue: #132b42;
+  --warm:      #1f2333;
+
+  --shadow:    0 18px 45px rgba(0, 0, 0, .22);
+  --shadow-sm: 0 8px 22px rgba(0, 0, 0, .20);
+  --shadow-lg: 0 30px 70px rgba(0, 0, 0, .38);
+
+  --glass-bg:    rgba(17, 28, 46, .52);
+  --glass-bg-2:  rgba(17, 28, 46, .72);
+  --glass-line:  rgba(255, 255, 255, .10);
+  --glass-inner: inset 0 1px 0 rgba(255, 255, 255, .07);
+  --glass-sheen: rgba(255, 255, 255, .14);
+}
+
+/* ---- 分类色（缩略图渐变 + 标签） ---- */
+:root {
+  --c-res-1: #bae6fd;  --c-res-2: #38bdf8;   /* 学习资料 · 天蓝 */
+  --c-note-1:#d9f2e3;  --c-note-2:#34d399;   /* 学习笔记 · 青绿 */
+  --c-life-1:#fde8c8;  --c-life-2:#fbbf24;   /* 生活感想 · 暖黄 */
+  --c-def-1: #e0e7ff;  --c-def-2: #818cf8;   /* 其他 · 靛蓝 */
+}
