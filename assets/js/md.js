@@ -46,10 +46,34 @@
     }
   }
 
+  /* 把一段 HTML 压成「属性安全」的纯文本：去标签 → 还原实体 → 重新转义。
+     用途：alt / title 里不能出现 KaTeX 生成的 <span> 和引号，否则属性会被截断。 */
+  function plainOf(s) {
+    return String(s)
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   function store() {
     var items = [];
+    var plains = [];                         /* 与 items 一一对应的纯文本版本（给 alt/title 用） */
     return {
-      put: function (html) { items.push(html); return SENT + (items.length - 1) + SENT; },
+      put: function (html, plain) {
+        items.push(html);
+        plains.push(plain == null ? plainOf(html) : plainOf(plain));
+        return SENT + (items.length - 1) + SENT;
+      },
+      /* 占位符出现在属性里时调用：拿到纯文本，而不是 KaTeX 的 HTML */
+      plain: function (n) { return plains[n] == null ? '' : plains[n]; },
       restore: function (s) {
         return s.replace(/\u0000(\d+)\u0000/g, function (_, n) { return items[+n]; });
       }
@@ -70,18 +94,28 @@
   function inline(text, st) {
     var s = esc(text);
 
+    /* 属性值净化：占位符 → 纯文本，再确保没有裸引号 */
+    function attr(v) {
+      return String(v)
+        .replace(/\u0000(\d+)\u0000/g, function (_, n) { return st.plain(+n); })
+        .replace(/"/g, '&quot;');
+    }
+
     // 行内代码
-    s = s.replace(/`([^`\n]+?)`/g, function (_, c) { return st.put('<code>' + c + '</code>'); });
+    s = s.replace(/`([^`\n]+?)`/g, function (_, c) { return st.put('<code>' + c + '</code>', c); });
 
     // 行内数学 $...$（开 `$` 后不接空格、闭 `$` 前不接空格且后不接数字，规避货币误判）
     s = s.replace(/\$(?!\s)((?:[^$\\\n]|\\.)+?)(?<!\s)\$(?!\d)/g, function (m, tex) {
-      return st.put(renderMath(unesc(tex), false, m));
+      return st.put(renderMath(unesc(tex), false, m), m);
     });
 
     // 图片
     s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\)/g,
       function (_, alt, src, title) {
-        return '<img src="' + src + '" alt="' + alt + '"' + (title ? ' title="' + title + '"' : '') + ' loading="lazy">';
+        /* alt 里可能已经塞了公式/行内代码的占位符，必须换成纯文本，
+           否则 KaTeX 的 HTML 会把 alt="…" 属性从中间截断 */
+        var a = attr(alt), t = title ? attr(title) : '';
+        return '<img src="' + src + '" alt="' + a + '"' + (t ? ' title="' + t + '"' : '') + ' loading="lazy">';
       });
 
     // 链接
