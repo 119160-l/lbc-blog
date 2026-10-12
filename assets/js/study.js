@@ -205,6 +205,51 @@
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
   }
 
+  /* ------------------------------ 教材 / PDF 下载 ------------------------------ */
+  /* 数据来自 assets/js/files.js（由 import-pdf.mjs 生成）。
+     课程页只显示属于这门课的，资料页显示全部。 */
+  var FILES = (global.BLOG_FILES || []);
+
+  function fmtSize(n) {
+    n = Number(n) || 0;
+    if (n >= 1048576) return (n / 1048576).toFixed(1).replace(/\.0$/, '') + ' MB';
+    if (n >= 1024) return Math.round(n / 1024) + ' KB';
+    return n + ' B';
+  }
+  function filesOf(courseKey) {
+    return FILES.filter(function (f) { return f.course === courseKey; });
+  }
+  function fileRowHTML(f) {
+    return '<a class="dl-row" href="' + esc(f.file) + '" download>' +
+      '<span class="dl-ico">' + svg('download', 17) + '</span>' +
+      '<div class="dl-body">' +
+        '<b>' + esc(f.title) +
+          (f.tag ? '<em class="dl-tag">' + esc(f.tag) + '</em>' : '') + '</b>' +
+        '<span class="dl-sub">' + esc(f.sub || '') +
+          (f.pages ? '　·　' + f.pages + ' 页' : '') + '　·　' + fmtSize(f.size) + '</span>' +
+        (f.note ? '<span class="dl-note">' + esc(f.note) + '</span>' : '') +
+      '</div>' +
+      '<span class="dl-go">下载</span>' +
+    '</a>';
+  }
+  function downloadsBlockHTML(courseKey) {
+    var list = courseKey ? filesOf(courseKey) : FILES;
+    if (!list.length) return '';
+    var bytes = list.reduce(function (a, f) { return a + (f.size || 0); }, 0);
+    return '<section class="dl-block">' +
+      '<div class="dl-head">' +
+        '<span class="dl-hicon">' + svg('download', 18) + '</span>' +
+        '<h2>' + (courseKey ? '本课教材与参考书' : '教材与参考资料') + '</h2>' +
+        '<span class="dl-count">' + list.length + ' 份 · ' + fmtSize(bytes) + '</span>' +
+      '</div>' +
+      '<p class="dl-desc">' + (courseKey
+        ? '这门课要用到的教材和参考书，点一下就能下载。'
+        : '本地攒下的教材与参考书，共 ' + list.length + ' 份。点标题直接下载，手机上也能存下来慢慢看。') +
+      '</p>' +
+      '<div class="dl-list">' + list.map(fileRowHTML).join('') + '</div>' +
+    '</section>';
+  }
+
   /* ------------------------------ 资料页（点首页「学习资料」进来） ------------------------------ */
   function renderLibrary() {
     var main = document.getElementById('main');
@@ -222,6 +267,7 @@
           '<div><b>' + COURSES.length + '</b>门课</div>' +
           '<div><b>' + POSTS.length + '</b>篇资料</div>' +
           '<div><b>' + chapters + '</b>个章节</div>' +
+          (FILES.length ? '<div><b>' + FILES.length + '</b>份 PDF</div>' : '') +
           '<div><b>' + fmtWords(chars) + '</b>总字数</div>' +
         '</div>' +
       '</section>' +
@@ -230,6 +276,7 @@
       '<div id="secWrap">' +
         '<div class="course-grid">' + COURSES.map(courseCardHTML).join('') + '</div>' +
         '<p class="lib-foot">想按章节一次看全？<a href="archive.html">按章节浏览 →</a></p>' +
+        downloadsBlockHTML('') +
       '</div>' +
     '</div>';
 
@@ -299,6 +346,7 @@
           (c.updated ? '<div><b>' + fmtDate(c.updated) + '</b>最近更新</div>' : '') +
         '</div>' +
       '</section>' +
+      downloadsBlockHTML(key) +
       searchBarHTML(key) +
       '<div id="hitWrap" hidden></div><div id="secWrap">' + stagesHTML(list, key) + '</div>' +
     '</div>';

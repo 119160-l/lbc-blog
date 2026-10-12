@@ -9,3 +9,6 @@
 # 构建/依赖
 node_modules/
 dist/
+
+# PDF 附件：体积大（150 MB+），只随发布上传，不进仓库
+files/
