@@ -2,26 +2,27 @@
    effects.css —— 液态玻璃 + 交互动效
    ========================================================================== */
 
-/* ============================ 背景光斑（玻璃需要有东西可折射） ============================ */
+/* ============================ 背景光斑（玻璃需要有东西可折射） ============================
+   ⚠️ 这几个光斑刻意做成「静止」的，不要给它们加 animation。
+
+   它们是 position: fixed，也就是屏幕上每一层 .glass 的 backdrop 的一部分。
+   一旦让它们持续漂移，backdrop 每帧都在变 → 每层 backdrop-filter 都要重算一次模糊，
+   页面完全闲置时也在满负荷跑，表现就是滚动发涩、打字掉字、点按钮迟钝。
+   静止之后浏览器可以缓存模糊结果，这部分开销基本归零。
+   玻璃的「活」感交给跟随指针流动的高光（.glass::before），不靠光斑漂移。
+   ============================================================================ */
 .bg-blobs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .bg-blobs i {
   position: absolute; display: block; border-radius: 50%;
-  filter: blur(70px); opacity: .5;
-  animation: blobFloat 26s ease-in-out infinite;
+  filter: blur(64px); opacity: .5;
 }
-.bg-blobs i:nth-child(1) { width: 480px; height: 480px; top: -140px; left: -80px;  background: #bae6fd; animation-delay: 0s; }
-.bg-blobs i:nth-child(2) { width: 420px; height: 420px; top: 22%;   right: -120px; background: #ddd6fe; animation-delay: -8s; }
-.bg-blobs i:nth-child(3) { width: 380px; height: 380px; bottom: 6%;  left: 16%;    background: #fef3c7; animation-delay: -15s; }
+.bg-blobs i:nth-child(1) { width: 480px; height: 480px; top: -140px; left: -80px;  background: #bae6fd; }
+.bg-blobs i:nth-child(2) { width: 420px; height: 420px; top: 30%;   right: -120px; background: #ddd6fe; }
+.bg-blobs i:nth-child(3) { width: 380px; height: 380px; bottom: 12%;  left: 14%;    background: #fef3c7; }
 [data-theme="dark"] .bg-blobs i { opacity: .30; }
 [data-theme="dark"] .bg-blobs i:nth-child(1) { background: #0ea5e9; }
 [data-theme="dark"] .bg-blobs i:nth-child(2) { background: #6366f1; }
 [data-theme="dark"] .bg-blobs i:nth-child(3) { background: #0d9488; }
-
-@keyframes blobFloat {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33%      { transform: translate3d(40px, -34px, 0) scale(1.08); }
-  66%      { transform: translate3d(-30px, 26px, 0) scale(.94); }
-}
 
 /* ============================ 液态玻璃基类 ============================ */
 .glass {
@@ -58,6 +59,47 @@
   opacity: .7;
 }
 .glass > * { position: relative; z-index: 1; }
+
+/* --------------------------------------------------------------------------
+   背景模糊只留给「相对视口固定、滚动时不移动」的那几层：
+   吸顶导航、移动端底栏、移动端下拉菜单、弹窗。
+   只有它们能在滚动时复用已算好的模糊结果。
+
+   其余 .glass（文章卡、侧栏面板、Banner、正文卡、目录、归档组、信息格、
+   回到顶部按钮、云功能区块……）一律改成「半透明 + 内发光边」：
+   观感几乎不变，但滚动时不用再各维护一层 backdrop 卷积 ——
+   首页一度同时存在十几层要算模糊，这是掉帧最直接的原因。
+   -------------------------------------------------------------------------- */
+.glass:not(.site-header):not(.mobile-nav):not(.nav-links):not(.cb-modal) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--glass-bg-2);
+}
+
+/* ==========================================================================
+   流畅模式（html[data-fx="lite"]）
+   由 app.js 实测帧率后自动切换，页脚也有手动开关。
+   彻底关掉背景模糊、光斑和跟指针的高光，回到纯色面板。
+   ========================================================================== */
+html[data-fx="lite"] .glass,
+html[data-fx="lite"] .nav-links {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm), var(--glass-inner);
+}
+html[data-fx="lite"] .glass::before { display: none; }   /* 跟指针流动的高光 */
+html[data-fx="lite"] .bg-blobs { display: none; }
+html[data-fx="lite"] .site-header { border-bottom: 1px solid var(--border); }
+
+/* 页脚里那个「特效」开关，做得很轻，不抢视线 */
+.fx-toggle {
+  border: 0; padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--muted-2);
+  font: inherit; font-size: 12.5px;
+  transition: background .2s var(--ease), color .2s var(--ease);
+}
+.fx-toggle:hover { background: var(--soft-blue); color: var(--accent-2); }
 
 /* 纯色面板（不需要透视的） */
 .solid {
@@ -153,7 +195,6 @@ body, .glass, .solid, .panel, .post-card, .btn, .pill, .tag {
     scroll-behavior: auto !important;
   }
   .reveal { opacity: 1; transform: none; }
-  .bg-blobs i { animation: none; }
 }
 
 /* 触屏设备不做指针高光（没有 hover） */

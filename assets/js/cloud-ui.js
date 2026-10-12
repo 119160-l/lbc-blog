@@ -260,7 +260,7 @@
           var src = previewSrc(a.preview_b64);
           return '<figure class="gal-item' + (session ? ' own' : '') + '" data-id="' + esc(a.id) + '">' +
             (src
-              ? '<img src="' + src + '" alt="' + esc(a.name) + '" loading="lazy">'
+              ? '<img src="' + src + '" alt="' + esc(a.name) + '" loading="lazy" decoding="async">'
               : '<div class="gal-noimg">无预览</div>') +
             '<figcaption><b>' + esc(a.name) + '</b>' +
               (a.caption ? '<em>' + esc(a.caption) + '</em>' : '') +

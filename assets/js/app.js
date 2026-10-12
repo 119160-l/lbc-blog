@@ -103,6 +103,43 @@
     });
   }
 
+  /* ------------------------------ 性能自适应 ------------------------------
+     页面上的背景模糊（backdrop-filter）和光斑过滤都很吃 GPU。同一条页面，
+     性能好的机器可以全开、老一点的机器就会明显发涩，所以这里改成实测决定：
+     没存过偏好时量一段真实帧间隔，撑不住就自动切「流畅模式」，并且记住结果。
+     页脚那个小按钮可以随时手动改，改完也记住。 */
+  var FX_KEY = 'lbc-fx';
+  function isLite() { return document.documentElement.getAttribute('data-fx') === 'lite'; }
+  function applyFx(mode) {
+    document.documentElement.setAttribute('data-fx', mode);
+    var b = $('#fxToggle');
+    if (b) b.textContent = mode === 'lite' ? '特效：已关闭（流畅模式）' : '特效：全开';
+  }
+  function setFx(mode, remember) {
+    applyFx(mode);
+    if (remember) { try { localStorage.setItem(FX_KEY, mode); } catch (e) {} }
+  }
+  function initFx() {
+    var pref = '';
+    try { pref = localStorage.getItem(FX_KEY) || ''; } catch (e) {}
+    if (pref === 'lite' || pref === 'full') { applyFx(pref); return; }
+    if (!window.requestAnimationFrame) { applyFx('lite'); return; }
+
+    /* 等首屏落定（800ms）再量 60 帧，丢掉最前面 5 帧，
+       取中位帧间隔：> 26ms（约 38fps）就判定为撑不住。 */
+    var gaps = [], last = 0, n = 0;
+    setTimeout(function () {
+      requestAnimationFrame(function step(ts) {
+        if (last) gaps.push(ts - last);
+        last = ts;
+        if (++n < 60) { requestAnimationFrame(step); return; }
+        var s = gaps.slice(5).sort(function (a, b) { return a - b; });
+        var med = s[Math.floor(s.length / 2)] || 16;
+        setFx(med > 26 ? 'lite' : 'full', true);
+      });
+    }, 800);
+  }
+
   /* ------------------------------ 玻璃指针高光 ------------------------------ */
   function noHover() {
     try { return !!(window.matchMedia && window.matchMedia('(hover: none)').matches); }
@@ -112,6 +149,7 @@
     if (noHover() || typeof document.addEventListener !== 'function') return;
     var pending = null, raf = 0;
     document.addEventListener('pointermove', function (e) {
+      if (isLite()) return;          /* 流畅模式不做这层高光 */
       pending = e;
       if (raf) return;
       raf = requestAnimationFrame(function () {
@@ -179,6 +217,8 @@
       '<p>© ' + new Date().getFullYear() + ' ' + esc(S.name || '') +
         '　·　共 ' + POSTS.length + ' 篇文章　·　' + esc(S.footer || '') + '</p>' +
       (S.email ? '<p><a href="mailto:' + esc(S.email) + '">' + esc(S.email) + '</a></p>' : '') +
+      '<p><button class="fx-toggle" id="fxToggle" type="button" ' +
+        'title="页面发涩时切到流畅模式：关掉背景模糊与光斑，滚动更顺">特效：全开</button></p>' +
     '</footer>' +
     '<button class="to-top glass press" id="toTop" aria-label="回到顶部">' + svg('up', 17) + '</button>';
   }
@@ -217,6 +257,9 @@
       var r = tb.getBoundingClientRect();
       setTheme(currentTheme === 'dark' ? 'light' : 'dark', true, r.left + r.width / 2, r.top + r.height / 2);
     };
+
+    var fxb = $('#fxToggle');
+    if (fxb) fxb.onclick = function () { setFx(isLite() ? 'full' : 'lite', true); };
 
     var sb = $('#searchBtn');
     if (sb) sb.onclick = function () {
@@ -628,6 +671,7 @@
 
     buildChrome();
     if ($('#themeBtn')) $('#themeBtn').innerHTML = svg(currentTheme === 'dark' ? 'sun' : 'moon', 17);
+    initFx();
 
     if (PAGE === 'home')    renderHome();
     if (PAGE === 'article') renderArticle();

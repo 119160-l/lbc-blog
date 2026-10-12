@@ -13,7 +13,9 @@ body {
   background:
     radial-gradient(circle at 50% 0%, rgba(219, 234, 254, .45), transparent 36rem),
     linear-gradient(180deg, var(--bg) 0%, var(--panel-2) 100%);
-  background-attachment: fixed;
+  /* 这里刻意不用 background-attachment: fixed ——
+     它会让浏览器在每一帧滚动里重绘一整屏背景，是滚动发涩的主因之一。
+     玻璃需要的"固定背景层"由 .bg-blobs（position: fixed）负责。 */
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
@@ -26,7 +28,6 @@ body {
   background:
     radial-gradient(circle at 50% 0%, rgba(56, 189, 248, .10), transparent 34rem),
     linear-gradient(180deg, #0d1728 0%, #111827 100%);
-  background-attachment: fixed;
 }
 
 a { color: inherit; text-decoration: none; }

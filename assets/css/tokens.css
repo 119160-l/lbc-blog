@@ -27,12 +27,15 @@
   --radius-sm: 12px;
   --max:       1280px;
 
-  /* ---- 液态玻璃 ---- */
+  /* ---- 液态玻璃 ----
+     模糊半径和饱和度直接决定 GPU 开销：blur 越大、saturate 越高，
+     每帧要对 backdrop 重做一次卷积的代价就越高。22px/180% 在 Safari 上
+     会让滚动明显发涩，降到 14px/150% 肉眼几乎看不出差别。 */
   --glass-bg:     rgba(255, 253, 250, .58);
   --glass-bg-2:   rgba(255, 253, 250, .76);
   --glass-line:   rgba(255, 255, 255, .62);
-  --glass-blur:   22px;
-  --glass-sat:    180%;
+  --glass-blur:   14px;
+  --glass-sat:    150%;
   --glass-inner:  inset 0 1px 0 rgba(255, 255, 255, .85);
   --glass-sheen:  rgba(255, 255, 255, .55);
 

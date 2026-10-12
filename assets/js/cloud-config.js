@@ -24,7 +24,9 @@ window.CLOUD_CONFIG = {
   tableComments: 'comments',
   tableAssets:   'post_assets',
 
-  /* 展示参数 */
+  /* 展示参数。
+     assetLimit 注意别调太大：每张配图的小图（base64）可能有 100~200KB，
+     一次全拉下来会明显拖慢文章页。30 张 ≈ 4MB 已经是上限，再多就该做分页了。 */
   commentLimit: 80,
-  assetLimit:   60
+  assetLimit:   30
 };
