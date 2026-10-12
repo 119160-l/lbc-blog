@@ -9,7 +9,7 @@ pdf-shrink.py —— 把扫描版 PDF 压到适合网页阅读的体积
 做法：逐页渲染成灰度 JPEG 重新组装。
   这两本本来就是黑白扫描，灰度不损失信息；120 DPI 在手机/电脑上放大看公式够用。
 
-用法：
+用法（先装依赖：pip install pymupdf）：
   python3 pdf-shrink.py <输入.pdf> files/<输出>.pdf [dpi] [质量]
 默认 dpi=120、质量=68。**输出直接写进站点的 files/ 目录**，
 之后跑 node import-pdf.mjs 会把它登记进清单（带 pre 标记的条目）。

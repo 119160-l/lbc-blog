@@ -117,6 +117,14 @@ function pageCount(p) {
   } catch { return 0; }
 }
 
+/* 没有 PyMuPDF 时（比如按惯例把临时装的包卸掉了）别把页数刷成 0，
+   从上一版 files.js 里沿用。 */
+const prevPages = {};
+try {
+  const m = fs.readFileSync(OUT, 'utf8').match(/window\.BLOG_FILES = (\[[\s\S]*\]);/);
+  if (m) JSON.parse(m[1]).forEach((f) => { prevPages[f.file] = f.pages || 0; });
+} catch { /* 第一次运行，没有旧文件，正常 */ }
+
 const list = [];
 let copied = 0, bytes = 0;
 if (!fs.existsSync(FILE_DIR)) fs.mkdirSync(FILE_DIR, { recursive: true });
@@ -150,7 +158,8 @@ for (const it of PDFS) {
     size = fs.statSync(to).size;
   }
 
-  const pages = pageCount(to);
+  const rel = REL_DIR + '/' + name;
+  const pages = pageCount(to) || prevPages[rel] || 0;
   bytes += size;
 
   list.push({
@@ -159,7 +168,7 @@ for (const it of PDFS) {
     sub: it.sub,
     course: it.course,
     tag: it.tag,
-    file: REL_DIR + '/' + name,
+    file: rel,
     size,
     pages,
     note: it.note || ''
