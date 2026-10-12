@@ -237,9 +237,11 @@ a.sec-entry:hover .se-go { transform: translateX(5px); }
   display: flex; align-items: center; gap: 14px;
   padding: 14px 16px; border-radius: var(--radius);
   background: var(--panel); border: 1px solid var(--border);
+  cursor: pointer;
   transition: border-color .18s var(--ease), transform .18s var(--ease), background .18s var(--ease);
 }
 .dl-row:hover { border-color: var(--accent); transform: translateX(3px); background: var(--panel-2); }
+.dl-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dl-ico {
   flex: none; width: 36px; height: 36px; border-radius: 11px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -256,12 +258,79 @@ a.sec-entry:hover .se-go { transform: translateX(5px); }
 }
 .dl-sub { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted-2); }
 .dl-note { display: block; margin-top: 5px; font-size: 12px; color: var(--muted-2); opacity: .85; }
+.dl-acts { flex: none; display: flex; align-items: center; gap: 9px; }
+.dl-mini {
+  flex: none; width: 32px; height: 32px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted-2); background: transparent; border: 1px solid var(--border);
+  transition: color .18s var(--ease), background .18s var(--ease), border-color .18s var(--ease);
+}
+.dl-mini:hover { color: var(--accent-2); border-color: var(--accent); background: var(--soft-blue); }
 .dl-go {
   flex: none; font-size: 12.5px; font-weight: 650; color: var(--accent-2);
   border: 1px solid var(--border); padding: 6px 13px; border-radius: 999px;
   transition: background .18s var(--ease), border-color .18s var(--ease);
 }
 .dl-row:hover .dl-go { background: var(--soft-blue); border-color: var(--accent); }
+
+/* ============================ PDF 在线阅读层 ============================ */
+/* 手机上点「下载」之后文件会落到「文件」App 里找不到，所以主操作是就地阅读。
+   这一层是全屏的，里面交给浏览器自带的 PDF 阅读器渲染。 */
+.pdf-mask {
+  position: fixed; inset: 0; z-index: 940;
+  display: grid; place-items: center; padding: 22px;
+  background: rgba(3, 9, 20, .62);
+  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+}
+.pdf-modal {
+  width: min(1180px, 100%); height: min(92vh, 100%);
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 18px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45);
+}
+.pdf-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.pdf-hicon {
+  flex: none; width: 34px; height: 34px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center; color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 18px rgba(14, 165, 233, .28);
+}
+.pdf-hbody { flex: 1; min-width: 0; }
+.pdf-hbody b {
+  display: block; font-size: 14.5px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pdf-hbody span { display: block; margin-top: 2px; font-size: 12px; color: var(--muted-2); }
+.pdf-acts { flex: none; display: flex; align-items: center; gap: 8px; }
+.pdf-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer;
+  padding: 7px 13px; border-radius: 999px; text-decoration: none;
+  color: var(--accent-2); background: transparent; border: 1px solid var(--border);
+  transition: color .18s var(--ease), background .18s var(--ease), border-color .18s var(--ease);
+}
+.pdf-btn:hover { background: var(--soft-blue); border-color: var(--accent); }
+.pdf-btn.primary {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.pdf-body { position: relative; flex: 1; min-height: 0; background: var(--panel-2); }
+.pdf-body iframe { display: block; width: 100%; height: 100%; border: 0; }
+.pdf-status {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; text-align: center;
+  padding: 20px; font-size: 13.5px; color: var(--muted-2); background: var(--panel-2);
+}
+.pdf-slow { display: grid; gap: 10px; justify-items: center; }
+.pdf-slow-tip { font-size: 12px; color: var(--muted-2); }
+.pdf-tip {
+  margin: 0; padding: 9px 14px; font-size: 12px; line-height: 1.6;
+  color: var(--muted-2); border-top: 1px solid var(--border);
+}
+html.pdf-lock { overflow: hidden; }
 
 /* ============================ 响应式 ============================ */
 @media (max-width: 900px) {
@@ -282,8 +351,22 @@ a.sec-entry:hover .se-go { transform: translateX(5px); }
   .dl-row { padding: 12px 13px; gap: 11px; align-items: flex-start; }
   .dl-ico { width: 32px; height: 32px; }
   .dl-body b { font-size: 13.5px; }
-  .dl-go { display: none; }   /* 整行本身就是下载链接，手机上不必再放按钮 */
+  .dl-acts { gap: 7px; margin-top: 2px; }
+  .dl-mini { width: 30px; height: 30px; }
+  .dl-go { padding: 5px 10px; font-size: 12px; }
+}
+/* 阅读层在手机上占满整屏，标题与按钮分两行放 */
+@media (max-width: 700px) {
+  .pdf-mask { padding: 0; }
+  .pdf-modal { width: 100%; height: 100%; max-height: none; border-radius: 0; }
+  .pdf-head { flex-wrap: wrap; gap: 9px; padding: 10px 12px; }
+  .pdf-hicon { display: none; }
+  .pdf-hbody { flex: 1 1 100%; order: 1; }
+  .pdf-acts { flex: 1 1 100%; order: 2; justify-content: flex-end; }
+  .pdf-btn { padding: 6px 11px; font-size: 12px; }
+  .pdf-tip { padding: 8px 12px; }
+  .pdf-body iframe { height: 100%; }
 }
 @media print {
-  .hits-head, .se-go, .dl-go { display: none !important; }
+  .hits-head, .se-go, .dl-go, .dl-mini, .dl-acts, .pdf-mask { display: none !important; }
 }

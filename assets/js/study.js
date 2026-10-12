@@ -205,9 +205,11 @@
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
   }
 
-  /* ------------------------------ 教材 / PDF 下载 ------------------------------ */
+  /* ------------------------------ 教材 / 在线阅读 ------------------------------ */
   /* 数据来自 assets/js/files.js（由 import-pdf.mjs 生成）。
-     课程页只显示属于这门课的，资料页显示全部。 */
+     课程页只显示属于这门课的，资料页显示全部。
+     主操作是「在网页里读」而不是「下载」：手机上点下载之后文件会落到
+     「文件」App 的下载目录里，很多人找不到；直接在站内读最省事。 */
   var FILES = (global.BLOG_FILES || []);
 
   function fmtSize(n) {
@@ -219,9 +221,15 @@
   function filesOf(courseKey) {
     return FILES.filter(function (f) { return f.course === courseKey; });
   }
+  function fileById(id) {
+    for (var i = 0; i < FILES.length; i++) if (FILES[i].id === id) return FILES[i];
+    return null;
+  }
+  /* 整行可点 = 在线阅读；右侧小按钮 = 下载到本地 */
   function fileRowHTML(f) {
-    return '<a class="dl-row" href="' + esc(f.file) + '" download>' +
-      '<span class="dl-ico">' + svg('download', 17) + '</span>' +
+    return '<div class="dl-row reveal" data-fid="' + esc(f.id) + '" role="button" tabindex="0"' +
+        ' aria-label="在线阅读：' + esc(f.title) + '">' +
+      '<span class="dl-ico">' + svg('read', 17) + '</span>' +
       '<div class="dl-body">' +
         '<b>' + esc(f.title) +
           (f.tag ? '<em class="dl-tag">' + esc(f.tag) + '</em>' : '') + '</b>' +
@@ -229,8 +237,12 @@
           (f.pages ? '　·　' + f.pages + ' 页' : '') + '　·　' + fmtSize(f.size) + '</span>' +
         (f.note ? '<span class="dl-note">' + esc(f.note) + '</span>' : '') +
       '</div>' +
-      '<span class="dl-go">下载</span>' +
-    '</a>';
+      '<span class="dl-acts">' +
+        '<a class="dl-mini" data-dl href="' + esc(f.file) + '" download' +
+          ' title="下载到本地" aria-label="下载到本地">' + svg('download', 15) + '</a>' +
+        '<span class="dl-go">在线阅读</span>' +
+      '</span>' +
+    '</div>';
   }
   function downloadsBlockHTML(courseKey) {
     var list = courseKey ? filesOf(courseKey) : FILES;
@@ -238,17 +250,142 @@
     var bytes = list.reduce(function (a, f) { return a + (f.size || 0); }, 0);
     return '<section class="dl-block">' +
       '<div class="dl-head">' +
-        '<span class="dl-hicon">' + svg('download', 18) + '</span>' +
+        '<span class="dl-hicon">' + svg('book', 18) + '</span>' +
         '<h2>' + (courseKey ? '本课教材与参考书' : '教材与参考资料') + '</h2>' +
         '<span class="dl-count">' + list.length + ' 份 · ' + fmtSize(bytes) + '</span>' +
       '</div>' +
       '<p class="dl-desc">' + (courseKey
-        ? '这门课要用到的教材和参考书，点一下就能下载。'
-        : '本地攒下的教材与参考书，共 ' + list.length + ' 份。点标题直接下载，手机上也能存下来慢慢看。') +
+        ? '这门课要用到的教材和参考书，点一下直接在网页里读，不用先下载。'
+        : '本地攒下的教材与参考书，共 ' + list.length + ' 份。点一下直接在网页里读；想存到本地就点右边的 ↓。') +
       '</p>' +
       '<div class="dl-list">' + list.map(fileRowHTML).join('') + '</div>' +
     '</section>';
   }
+
+  /* ------------------------------ PDF 阅读层 ------------------------------ */
+  /* 全屏一层，里面放个 iframe，交给浏览器自带的 PDF 阅读器渲染。
+     为什么不用 PDF.js：正本教材 40~65 MB，手机上用 canvas 逐页渲染内存吃不消，
+     浏览器自带阅读器反而更省、还能双指缩放。 */
+  var RD = null, rdOpen = false, rdTimer = null;
+
+  function rdEnsure() {
+    if (RD) return RD;
+    RD = document.createElement('div');
+    RD.className = 'pdf-mask';
+    RD.id = 'pdfMask';
+    RD.hidden = true;
+    RD.innerHTML =
+      '<div class="pdf-modal glass" role="dialog" aria-modal="true" aria-label="在线阅读">' +
+        '<div class="pdf-head">' +
+          '<span class="pdf-hicon">' + svg('read', 18) + '</span>' +
+          '<div class="pdf-hbody"><b id="pdfTitle"></b><span id="pdfSub"></span></div>' +
+          '<div class="pdf-acts">' +
+            '<a class="pdf-btn" id="pdfNew" target="_blank" rel="noopener">' +
+              svg('external', 13) + '<span>新窗口</span></a>' +
+            '<a class="pdf-btn" id="pdfDl" download>' + svg('download', 13) + '<span>下载</span></a>' +
+            '<button class="pdf-btn primary" id="pdfClose" type="button">' +
+              svg('close', 13) + '<span>关闭</span></button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pdf-body">' +
+          '<div class="pdf-status" id="pdfStatus">正在打开…</div>' +
+          '<iframe id="pdfFrame" title="PDF 阅读器"></iframe>' +
+        '</div>' +
+        '<p class="pdf-tip">框里一直空白的话，点「新窗口」——Safari 会用它自带的 PDF 阅读器；' +
+          '大教材建议在 Wi-Fi 下打开。</p>' +
+      '</div>';
+    document.body.appendChild(RD);
+
+    RD.querySelector('#pdfClose').addEventListener('click', function () { rdClose(false); });
+    RD.addEventListener('click', function (e) { if (e.target === RD) rdClose(false); });
+    RD.querySelector('#pdfFrame').addEventListener('load', function () {
+      if (!rdOpen) return;
+      var st = RD.querySelector('#pdfStatus');
+      if (st) st.hidden = true;
+    });
+    return RD;
+  }
+
+  function rdOpenFile(f) {
+    if (!f) return;
+    var w = rdEnsure();
+    w.querySelector('#pdfTitle').textContent = f.title || 'PDF';
+    w.querySelector('#pdfSub').textContent =
+      [f.sub, f.pages ? f.pages + ' 页' : '', fmtSize(f.size)].filter(Boolean).join('　·　');
+    w.querySelector('#pdfNew').href = f.file;
+    w.querySelector('#pdfDl').href = f.file;
+    var st = w.querySelector('#pdfStatus');
+    st.hidden = false;
+    st.textContent = '正在打开…' + fmtSize(f.size) + (f.pages ? ' / ' + f.pages + ' 页' : '') +
+      '，首次加载稍慢';
+    /* #view=FitH 让阅读器一上来就按页宽显示，手机上不用手动缩 */
+    w.querySelector('#pdfFrame').src = f.file + '#view=FitH';
+    w.hidden = false;
+    rdOpen = true;
+    document.documentElement.classList.add('pdf-lock');
+    try { history.pushState({ pdf: f.id }, '', '#read=' + encodeURIComponent(f.id)); } catch (e) { }
+    clearTimeout(rdTimer);
+    /* 兜底：等太久了就主动给一个「用系统阅读器打开」的出口，别让手机用户干等 */
+    rdTimer = setTimeout(function () {
+      if (!rdOpen) return;
+      var s = w.querySelector('#pdfStatus');
+      if (!s || s.hidden) return;
+      s.innerHTML = '<div class="pdf-slow">' +
+        '<span>好像加载得有点慢…</span>' +
+        '<a class="pdf-btn primary" href="' + esc(f.file) + '" target="_blank" rel="noopener">' +
+          svg('external', 13) + '<span>用系统阅读器打开</span></a>' +
+        '<span class="pdf-slow-tip">用 Safari 自带的阅读器通常立刻就能翻页</span>' +
+        '</div>';
+    }, 9000);
+  }
+
+  function rdClose(fromHistory) {
+    if (!rdOpen) return;
+    rdOpen = false;
+    clearTimeout(rdTimer);
+    var w = RD;
+    if (w) {
+      /* 先把 iframe 导航走，几十 MB 的 PDF 内存才能还给浏览器 */
+      w.querySelector('#pdfFrame').src = 'about:blank';
+      w.hidden = true;
+    }
+    document.documentElement.classList.remove('pdf-lock');
+    if (!fromHistory && history.state && history.state.pdf) {
+      try { history.back(); } catch (e) { }
+    }
+  }
+
+  /* 支持 ?#read=<id> 直链：分享出去的地址打开就是那一本 */
+  function rdFromHash() {
+    var m = /(?:^|[#&])read=([^&]+)/.exec(global.location.hash || '');
+    if (!m) return false;
+    var f = fileById(decodeURIComponent(m[1]));
+    if (!f) return false;
+    rdOpenFile(f);
+    return true;
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var row = t.closest('.dl-row');
+    if (!row) return;
+    if (t.closest('[data-dl]')) return;            /* 点的是「下载」小按钮 */
+    var f = fileById(row.getAttribute('data-fid'));
+    if (!f) return;
+    e.preventDefault();
+    rdOpenFile(f);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { rdClose(false); return; }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target &&
+        e.target.classList && e.target.classList.contains('dl-row')) {
+      e.preventDefault();
+      var f = fileById(e.target.getAttribute('data-fid'));
+      if (f) rdOpenFile(f);
+    }
+  });
+  global.addEventListener('popstate', function () { rdClose(true); });
 
   /* ------------------------------ 资料页（点首页「学习资料」进来） ------------------------------ */
   function renderLibrary() {
@@ -287,6 +424,7 @@
       timer = setTimeout(function () { drawHits(input.value, null, hitWrap, secWrap); }, 140);
     });
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
+    rdFromHash();
   }
 
   /* ------------------------------ 课程页 ------------------------------ */
@@ -358,6 +496,7 @@
       timer = setTimeout(function () { drawHits(input.value, key, hitWrap, secWrap); }, 140);
     });
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
+    rdFromHash();
   }
 
   /* ------------------------------ 归档页 ------------------------------ */
@@ -396,6 +535,7 @@
       timer = setTimeout(function () { drawHits(input.value, null, hitWrap, secWrap); }, 140);
     });
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
+    rdFromHash();
   }
 
   global.StudyUI = {
