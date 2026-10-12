@@ -388,8 +388,12 @@ const js =
   '/* 本文件由 import.mjs 自动生成，请勿手改。 */\n' +
   '/* 改内容请编辑源目录里的 Markdown，然后运行 node import.mjs */\n' +
   'window.BLOG_SECTIONS = ' + JSON.stringify([
-    { key: 'study', name: '学习资料', desc: '课程笔记、公式推导、练习题与仿真代码，按课程与章节归档', show: true },
-    { key: 'essay', name: '生活随笔', desc: '随手记录，想到什么写什么', show: false }
+    /* 首页只渲染这一层。以后要加板块，在这里加一条就行：
+       href 给「点进去之后」的页面地址；open:false 表示还没内容，卡片显示「敬请期待」不可点 */
+    { key: 'study', name: '学习资料', desc: '课程笔记、公式推导、练习题与仿真代码，按「课程 → 阶段 → 章 → 篇」归档',
+      href: 'library.html', open: true,  icon: 'book', tone: 'blue' },
+    { key: 'essay', name: '生活随笔', desc: '随手记录，想到什么写什么',
+      href: 'essay.html',  open: false, icon: 'pen',  tone: 'warm' }
   ]) + ';\n' +
   'window.BLOG_COURSES = ' + JSON.stringify(courses) + ';\n' +
   'window.BLOG_POSTS = ' + JSON.stringify(catalog) + ';\n';

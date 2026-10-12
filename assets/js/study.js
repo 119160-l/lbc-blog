@@ -93,11 +93,6 @@
     return '<section class="hero-banner glass enter">' +
       '<h1>' + esc(S.tagline || '记录学习，也记录生活') + '</h1>' +
       '<p>' + esc(S.intro || '') + '</p>' +
-      '<div class="hero-actions">' +
-        '<a class="btn primary ripple-host press" href="#study">' + svg('book', 15) + '学习资料</a>' +
-        '<a class="btn ripple-host press" href="archive.html">' + svg('archive', 15) + '按章节浏览</a>' +
-        '<a class="btn ripple-host press" href="about.html">认识我</a>' +
-      '</div>' +
       (notices.length
         ? '<div class="notice-strip">' + notices.map(function (n) {
             return '<span>' + esc(n.text) + (n.date ? '<time>' + esc(n.date) + '</time>' : '') + '</span>';
@@ -140,51 +135,50 @@
     '</a>';
   }
 
-  function studyBlockHTML() {
-    var total = POSTS.length;
-    var chars = COURSES.reduce(function (a, c) { return a + (c.chars || 0); }, 0);
-    return '<section class="sec-block" id="study">' +
-      '<div class="sec-head">' +
-        '<span class="sec-icon">' + svg('book', 19) + '</span>' +
-        '<h2>学习资料</h2>' +
-        '<span class="sec-count">' + COURSES.length + ' 门课 · ' + total + ' 篇 · ' + fmtWords(chars) + '</span>' +
-        '<a class="sec-more" href="archive.html">按章节浏览 →</a>' +
-      '</div>' +
-      '<p class="sec-desc">课程笔记、公式推导、练习题与仿真代码，完全按源文件夹的「课程 → 阶段 → 章 → 篇」结构归档。</p>' +
-      '<div class="course-grid">' + COURSES.map(courseCardHTML).join('') + '</div>' +
-    '</section>';
+  /* --------------------------------------------------------------------------
+     首页只渲染「板块」这一层 —— 学习资料 / 生活随笔。
+     科目列表、章节列表都放在点进去之后的页面里（学习资料 → library.html），
+     首页不再直接摊开科目。
+     以后要加板块，只改 catalog.js 里 BLOG_SECTIONS 的配置，本文件不用动：
+       { key, name, desc, href, open, icon, tone }
+       open:false → 卡片显示「敬请期待」，不可点
+     -------------------------------------------------------------------------- */
+  function sectionMeta(sec) {
+    if (sec.key === 'study') {
+      var chars = COURSES.reduce(function (a, c) { return a + (c.chars || 0); }, 0);
+      return COURSES.length + ' 门课 · ' + POSTS.length + ' 篇 · ' + fmtWords(chars);
+    }
+    var n = POSTS.filter(function (p) { return p.section === sec.key; }).length;
+    return n ? n + ' 篇' : '暂未开张';
   }
 
-  function essayBlockHTML() {
-    var sec = SECTIONS.filter(function (s) { return s.key === 'essay'; })[0] || { desc: '随手记录，想到什么写什么' };
-    var n = POSTS.filter(function (p) { return p.section === 'essay'; }).length;
-    return '<section class="sec-block" id="essay">' +
-      '<div class="sec-head">' +
-        '<span class="sec-icon" style="background:linear-gradient(135deg,#fbbf24,#f97316);box-shadow:0 8px 18px rgba(251,191,36,.3);">' +
-          svg('user', 18) + '</span>' +
-        '<h2>生活随笔</h2>' +
-        '<span class="sec-count">' + (n ? n + ' 篇' : '暂未开张') + '</span>' +
+  function sectionEntryHTML(sec) {
+    var open = sec.open !== false;
+    var cls = 'sec-entry glass' + (sec.tone === 'warm' ? ' tone-warm' : '');
+    var inner =
+      '<span class="sec-icon">' + svg(sec.icon || 'book', 20) + '</span>' +
+      '<div class="se-body">' +
+        '<h2>' + esc(sec.name) + (open ? '' : '<em class="se-soon">敬请期待</em>') + '</h2>' +
+        '<p>' + esc(sec.desc || '') + '</p>' +
+        '<div class="se-meta">' + esc(sectionMeta(sec)) + '</div>' +
       '</div>' +
-      '<p class="sec-desc">' + esc(sec.desc || '') + '</p>' +
-      '<div class="empty-state glass reveal" style="border-radius:var(--radius-lg);padding:44px 20px;">' +
-        '<b>这个板块先留个位置</b>' +
-        '现在还没有随笔内容。等想写的时候，把 Markdown 放进随笔目录再重新导入一次就行 —— 板块、样式、列表都是现成的。' +
-      '</div>' +
-    '</section>';
+      (open ? '<span class="se-go">→</span>' : '');
+    if (!open) {
+      return '<div class="' + cls + ' is-locked" id="' + esc(sec.key) + '">' + inner + '</div>';
+    }
+    return '<a class="' + cls + ' ripple-host reveal" id="' + esc(sec.key) +
+      '" href="' + esc(sec.href || '#') + '">' + inner + '</a>';
   }
 
   function renderHome() {
     var main = document.getElementById('main');
-    main.innerHTML = '<div class="container">' + heroHTML() + searchBarHTML() +
-      '<div id="hitWrap" hidden></div><div id="secWrap">' + studyBlockHTML() + essayBlockHTML() + '</div>' +
-      '</div>';
-
-    var input = $('#searchInput'), hitWrap = $('#hitWrap'), secWrap = $('#secWrap');
-    var timer = null;
-    input.addEventListener('input', function () {
-      clearTimeout(timer);
-      timer = setTimeout(function () { drawHits(input.value, null, hitWrap, secWrap); }, 140);
-    });
+    var entries = SECTIONS.length
+      ? SECTIONS.map(sectionEntryHTML).join('')
+      : '<div class="empty-state glass" style="border-radius:var(--radius);"><b>还没有配置板块</b>' +
+        '在 catalog.js 的 BLOG_SECTIONS 里加一条即可。</div>';
+    main.innerHTML = '<div class="container">' + heroHTML() +
+      '<div class="sec-entries">' + entries + '</div>' +
+    '</div>';
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
   }
 
@@ -208,6 +202,43 @@
       if (i) { i.value = ''; i.focus(); }
       drawHits('', scope, hitWrap, secWrap);
     };
+    if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
+  }
+
+  /* ------------------------------ 资料页（点首页「学习资料」进来） ------------------------------ */
+  function renderLibrary() {
+    var main = document.getElementById('main');
+    var chars = COURSES.reduce(function (a, c) { return a + (c.chars || 0); }, 0);
+    var chapters = COURSES.reduce(function (a, c) { return a + (c.chapters || 0); }, 0);
+
+    main.innerHTML = '<div class="container">' +
+      '<div class="crumb" style="margin-top:26px;">' +
+        '<a href="index.html">首页</a><span>›</span><span>学习资料</span>' +
+      '</div>' +
+      '<section class="course-hero glass enter">' +
+        '<h1>学习资料</h1>' +
+        '<p>' + COURSES.length + ' 门课、' + POSTS.length + ' 篇资料，完全按源文件夹的「课程 → 阶段 → 章 → 篇」结构归档，公式用 KaTeX 排版。下面是全部科目。</p>' +
+        '<div class="course-stats">' +
+          '<div><b>' + COURSES.length + '</b>门课</div>' +
+          '<div><b>' + POSTS.length + '</b>篇资料</div>' +
+          '<div><b>' + chapters + '</b>个章节</div>' +
+          '<div><b>' + fmtWords(chars) + '</b>总字数</div>' +
+        '</div>' +
+      '</section>' +
+      searchBarHTML(null) +
+      '<div id="hitWrap" hidden></div>' +
+      '<div id="secWrap">' +
+        '<div class="course-grid">' + COURSES.map(courseCardHTML).join('') + '</div>' +
+        '<p class="lib-foot">想按章节一次看全？<a href="archive.html">按章节浏览 →</a></p>' +
+      '</div>' +
+    '</div>';
+
+    var input = $('#searchInput'), hitWrap = $('#hitWrap'), secWrap = $('#secWrap');
+    var timer = null;
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { drawHits(input.value, null, hitWrap, secWrap); }, 140);
+    });
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
   }
 
@@ -256,7 +287,7 @@
 
     main.innerHTML = '<div class="container">' +
       '<div class="crumb" style="margin-top:26px;"><a href="index.html">首页</a><span>›</span>' +
-        '<a href="index.html#study">学习资料</a><span>›</span><span>' + esc(c.name) + '</span></div>' +
+        '<a href="library.html">学习资料</a><span>›</span><span>' + esc(c.name) + '</span></div>' +
       '<section class="course-hero glass enter">' +
         '<h1>' + esc(c.name) + '</h1>' +
         '<p>' + esc(c.desc || '') + '</p>' +
@@ -286,7 +317,11 @@
     var main = document.getElementById('main');
     var total = POSTS.length;
     main.innerHTML = '<div class="container">' +
-      '<section class="course-hero glass enter" style="margin-top:26px;">' +
+      '<div class="crumb" style="margin-top:26px;">' +
+        '<a href="index.html">首页</a><span>›</span>' +
+        '<a href="library.html">学习资料</a><span>›</span><span>按章节浏览</span>' +
+      '</div>' +
+      '<section class="course-hero glass enter">' +
         '<h1>全部资料</h1>' +
         '<p>' + COURSES.length + ' 门课、' + total + ' 篇资料，按「课程 → 阶段 → 章 → 篇」完整列出，和源文件夹一一对应。</p>' +
         '<div class="course-stats"><div><b>' + COURSES.length + '</b>门课</div>' +
@@ -315,5 +350,11 @@
     if (global.KIT_AFTER_RENDER) global.KIT_AFTER_RENDER();
   }
 
-  global.StudyUI = { renderHome: renderHome, renderCourse: renderCourse, renderArchive: renderArchive, groupsOf: groupsOf, courseOf: courseOf, postsOf: postsOf };
+  global.StudyUI = {
+    renderHome: renderHome,
+    renderLibrary: renderLibrary,
+    renderCourse: renderCourse,
+    renderArchive: renderArchive,
+    groupsOf: groupsOf, courseOf: courseOf, postsOf: postsOf
+  };
 })(window);

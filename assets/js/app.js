@@ -28,7 +28,8 @@
     archive: '<path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v1.5A1.75 1.75 0 0 1 14.25 6H1.75A1.75 1.75 0 0 1 0 4.25v-1.5ZM1.75 7.5h12.5l-.25 6.75A1.75 1.75 0 0 1 12.26 16H3.74A1.75 1.75 0 0 1 2 14.25L1.75 7.5Zm4.75 2a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 0-1.5h-3Z"/>',
     up     : '<path d="M3.47 7.78a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1-1.06 1.06L8.75 4.56v8.69a.75.75 0 0 1-1.5 0V4.56L4.53 7.78a.75.75 0 0 1-1.06 0Z"/>',
     info   : '<path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/>',
-    user   : '<path d="M8 8.25a3.375 3.375 0 1 0 0-6.75 3.375 3.375 0 0 0 0 6.75Zm0 1.5c-3.14 0-5.75 1.94-5.75 4.35 0 .66.54 1.2 1.2 1.2h9.1c.66 0 1.2-.54 1.2-1.2 0-2.41-2.61-4.35-5.75-4.35Z"/>'
+    user   : '<path d="M8 8.25a3.375 3.375 0 1 0 0-6.75 3.375 3.375 0 0 0 0 6.75Zm0 1.5c-3.14 0-5.75 1.94-5.75 4.35 0 .66.54 1.2 1.2 1.2h9.1c.66 0 1.2-.54 1.2-1.2 0-2.41-2.61-4.35-5.75-4.35Z"/>',
+    pen    : '<path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.47 6.47a.25.25 0 0 0-.06.1l-.616 2.156 2.156-.616a.25.25 0 0 0 .1-.06l6.33-6.61Zm1.06-1.06 1.44-1.44a.25.25 0 0 0 0-.354l-1.086-1.086a.25.25 0 0 0-.354 0l-1.44 1.44 1.44 1.44Z"/>'
   };
   function svg(name, size) {
     return '<svg width="' + (size || 16) + '" height="' + (size || 16) + '" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">' + ICON[name] + '</svg>';
@@ -183,10 +184,10 @@
 
   /* ------------------------------ 页面骨架 ------------------------------ */
   function navbarHTML(active) {
-    /* 全站只有两个板块：学习资料 / 生活随笔，导航直接对应 */
+    /* 首页只放两个板块入口；科目列表在 library.html，点进去才看到 */
     var items = [
       { href: 'index.html', label: '首页', key: 'home' },
-      { href: 'index.html#study', label: '学习资料', key: 'study' },
+      { href: 'library.html', label: '学习资料', key: 'library' },
       { href: 'archive.html', label: '按章节浏览', key: 'archive' },
       { href: 'about.html', label: '关于', key: 'about' }
     ];
@@ -225,8 +226,8 @@
   function mobileNavHTML(active) {
     var items = [
       { href: 'index.html', label: '首页', icon: 'book', key: 'home' },
-      { href: 'archive.html', label: '归档', icon: 'archive', key: 'archive' },
-      { href: '#search', label: '搜索', icon: 'search', key: 'search' },
+      { href: 'library.html', label: '资料', icon: 'archive', key: 'library' },
+      { href: 'library.html#search', label: '搜索', icon: 'search', key: 'search' },
       { href: 'about.html', label: '关于', icon: 'info', key: 'about' }
     ];
     return '<nav class="mobile-nav glass">' + items.map(function (it) {
@@ -523,6 +524,7 @@
       '<article class="article-reader glass enter">' +
         '<div class="crumb">' +
           '<a href="index.html">首页</a><span>›</span>' +
+          '<a href="library.html">学习资料</a><span>›</span>' +
           (course ? '<a href="course.html?c=' + encodeURIComponent(course.key) + '">' + esc(course.name) + '</a><span>›</span>' : '') +
           '<span>' + esc(p.chapter || '') + '</span>' +
         '</div>' +
@@ -723,6 +725,7 @@
     initFx();
 
     if (PAGE === 'home')    { if (window.StudyUI) StudyUI.renderHome(); else renderHome(); }
+    if (PAGE === 'library') { if (window.StudyUI) StudyUI.renderLibrary(); else renderArchive(); }
     if (PAGE === 'course')  { if (window.StudyUI) StudyUI.renderCourse(); }
     if (PAGE === 'article') renderArticle();
     if (PAGE === 'archive') { if (window.StudyUI) StudyUI.renderArchive(); else renderArchive(); }
@@ -732,7 +735,8 @@
     initRipple();
     initReveal();
 
-    if (location.hash === '#search' && PAGE === 'home') {
+    /* #search 现在指向各个列表页（资料页/课程页/归档页）的搜索框，首页已不放搜索框 */
+    if (location.hash === '#search') {
       var i = $('#searchInput');
       if (i) setTimeout(function () { i.focus(); }, 300);
     }
