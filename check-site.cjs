@@ -1,5 +1,5 @@
 /* ==========================================================================
-   check-site.cjs —— 发布前的整页回归校验（46 项断言）
+   check-site.cjs —— 发布前的整页回归校验（65 项断言）
 
    用法：
      /Users/lbc/.workbuddy/binaries/node/versions/22.22.2-6/bin/node check-site.cjs
@@ -13,18 +13,22 @@
      5. #read=<id> 直链自动进阅读层
      6. 课程页只列本课 PDF，且不预加载 iframe
      7. 9 秒未加载出来的兜底按钮
-     8. 矩阵论两篇知识讲解的 7 张配图全部落地（src 存在 / loading=lazy / alt 未被污染）
+     8. 预检判死自动降级：断网 / HTTP 404 / 返回网页 → 撤 iframe + 降级面板 + 重试
+     9. 矩阵论两篇知识讲解的 7 张配图全部落地（src 存在 / loading=lazy / alt 未被污染）
+    10. 小屏与触屏适配：safe-area、降级面板操作行、pointer:coarse、触屏超时更短
 
    关键实现说明（别改成别的写法，会静默失效）：
      - jsdom 30 不再执行外链 <script src>，所以这里把脚本正文**内联**进 HTML 再交给 jsdom；
        文件缺失会插一条注释并记成失败，避免「页面没渲染」被误读成断言写错。
      - 站点取正文用的是相对地址 fetch('posts/x.md')，打桩时必须先 `new w.URL(u, 'https://site.local/')`，
        否则会漏掉并退到 Node 原生 fetch → 一律 404。
+     - loadPage 第三参 fetchMode 模拟阅读层预检的三种判死（reject / 404 / html），
+       只在 library.html 上生效（该页启动零 fetch，唯一 fetch 就是预检）。
    ========================================================================== */
 /* 发布前整页校验：把 <script src> 内联进 HTML 再交给 jsdom（jsdom 30 不再执行外链脚本） */
 const fs = require('fs');
 const path = require('path');
-const ROOT = '/Users/lbc/WorkBuddy/Claw/lbc-blog';
+const ROOT = '/Users/lbc/Workbuddy/Claw/lbc-blog';
 const { JSDOM, VirtualConsole } = require('/Users/lbc/.workbuddy/binaries/node/workspace/node_modules/jsdom');
 
 const problems = [];
@@ -45,7 +49,7 @@ function inlineScripts(html) {
   return { html: out, missing };
 }
 
-async function loadPage(rel, urlOverride) {
+async function loadPage(rel, urlOverride, fetchMode) {
   const html = fs.readFileSync(path.join(ROOT, rel.split('?')[0]), 'utf8');
   const { html: inlined, missing } = inlineScripts(html);
   const url = 'https://site.local/' + (urlOverride || rel);
@@ -57,12 +61,20 @@ async function loadPage(rel, urlOverride) {
       w.matchMedia = () => ({ matches: false, addListener() { }, removeListener() { }, addEventListener() { }, removeEventListener() { } });
       const of = w.fetch;
       w.fetch = function (u) {
+        /* fetchMode：模拟阅读层预检判死的三种输入 */
+        if (fetchMode === 'reject') return Promise.reject(new w.TypeError('Failed to fetch'));
+        if (fetchMode === '404') return Promise.resolve({ ok: false, status: 404, headers: { get: () => 'text/html' }, text: () => Promise.resolve('') });
+        if (fetchMode === 'html') return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'text/html' }, text: () => Promise.resolve('<html></html>') });
         let s = null;
         try { s = new w.URL(String(u), 'https://site.local/'); } catch (e) { }
         if (s && s.host === 'site.local') {
           const p = path.join(ROOT, decodeURIComponent(s.pathname.replace(/^\//, '')));
           return fs.existsSync(p)
-            ? Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(fs.readFileSync(p, 'utf8')) })
+            ? Promise.resolve({
+              ok: true, status: 200,
+              headers: { get: (h) => String(h).toLowerCase() === 'content-type' ? 'application/pdf' : null },
+              text: () => Promise.resolve(fs.readFileSync(p, 'utf8')),
+            })
             : Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve('') });
         }
         if (of) return of.apply(this, arguments);
@@ -223,6 +235,42 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
       JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/files.js'), 'utf8')
         .match(/window\.BLOG_FILES = (\[[\s\S]*\]);/)[1]).find((f) => f.id === fid).file + '#view=FitH',
       '兜底出现时 iframe 仍在等同一个文件');
+  }
+
+  /* ---------- 8. 预检判死：自动降级，不挂 iframe 干等 ---------- */
+  for (const [mode, kw, label] of [
+    ['reject', '网络', '断网'],
+    ['404', '404', 'HTTP 404'],
+    ['html', '不是 PDF', '返回网页'],
+  ]) {
+    const { w, d } = await loadPage('library.html', null, mode);
+    const row = d.querySelectorAll('#main .dl-row')[0];
+    fire(w, row, 'click');
+    await new Promise((r) => setTimeout(r, 300));
+    const mask = d.getElementById('pdfMask');
+    assert(mask && !mask.hidden, label + '：阅读层仍然打开');
+    const st = d.getElementById('pdfStatus');
+    assert(st && !st.hidden && st.textContent.includes(kw),
+      label + '：状态层给出对应降级提示', st && st.textContent);
+    assert(st && !!st.querySelector('[data-rd-retry]'), label + '：降级面板带重试按钮');
+    const fr2 = d.getElementById('pdfFrame');
+    assert(fr2 && (fr2.getAttribute('src') === 'about:blank' || !fr2.getAttribute('src')),
+      label + '：iframe 已撤下', fr2 && fr2.getAttribute('src'));
+    /* 点重试会重走流程（此模式下必然再失败一次，提示依旧在） */
+    fire(w, st.querySelector('[data-rd-retry]'), 'click');
+    await new Promise((r) => setTimeout(r, 300));
+    const st2 = d.getElementById('pdfStatus');
+    assert(st2 && !st2.hidden && st2.textContent.includes(kw), label + '：重试后仍是降级提示');
+  }
+
+  /* ---------- 9. 小屏与触屏适配 ---------- */
+  {
+    const css2 = fs.readFileSync(path.join(ROOT, 'assets/css/study.css'), 'utf8');
+    assert(/safe-area-inset/.test(css2), '阅读层小屏缺少 safe-area 适配');
+    assert(/pdf-slow-acts/.test(css2), '降级面板操作行缺少样式');
+    const js2 = fs.readFileSync(path.join(ROOT, 'assets/js/study.js'), 'utf8');
+    assert(/pointer:\s*coarse/.test(js2), 'study.js 缺少触屏检测');
+    assert(/6000\s*:\s*9000/.test(js2), '触屏超时未比桌面短');
   }
 
   console.log(problems.length ? '\n❌ 失败：\n - ' + problems.join('\n - ') : `\n✅ 全部通过（${checks} 项）`);
