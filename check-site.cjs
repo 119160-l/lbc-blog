@@ -1,5 +1,5 @@
 /* ==========================================================================
-   check-site.cjs —— 发布前的整页回归校验（65 项断言）
+   check-site.cjs —— 发布前的整页回归校验（72 项断言）
 
    用法：
      /Users/lbc/.workbuddy/binaries/node/versions/22.22.2-6/bin/node check-site.cjs
@@ -16,6 +16,7 @@
      8. 预检判死自动降级：断网 / HTTP 404 / 返回网页 → 撤 iframe + 降级面板 + 重试
      9. 矩阵论两篇知识讲解的 7 张配图全部落地（src 存在 / loading=lazy / alt 未被污染）
     10. 小屏与触屏适配：safe-area、降级面板操作行、pointer:coarse、触屏超时更短
+    11. 触屏可读性：默认 #zoom=140 可读字号（不用 FitH）、横屏全屏按钮、提示语、桌面不变
 
    关键实现说明（别改成别的写法，会静默失效）：
      - jsdom 30 不再执行外链 <script src>，所以这里把脚本正文**内联**进 HTML 再交给 jsdom；
@@ -49,7 +50,10 @@ function inlineScripts(html) {
   return { html: out, missing };
 }
 
-async function loadPage(rel, urlOverride, fetchMode) {
+async function loadPage(rel, urlOverride, opts) {
+  const o = (typeof opts === 'string') ? { fetchMode: opts } : (opts || {});
+  const fetchMode = o.fetchMode;
+  const touch = !!o.touch;
   const html = fs.readFileSync(path.join(ROOT, rel.split('?')[0]), 'utf8');
   const { html: inlined, missing } = inlineScripts(html);
   const url = 'https://site.local/' + (urlOverride || rel);
@@ -58,7 +62,14 @@ async function loadPage(rel, urlOverride, fetchMode) {
   const dom = new JSDOM(inlined, {
     url, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
-      w.matchMedia = () => ({ matches: false, addListener() { }, removeListener() { }, addEventListener() { }, removeEventListener() { } });
+      /* opts.touch：模拟手机（pointer:coarse + maxTouchPoints） */
+      w.matchMedia = (q) => ({
+        matches: touch && /coarse/.test(String(q)),
+        addListener() { }, removeListener() { }, addEventListener() { }, removeEventListener() { },
+      });
+      try {
+        Object.defineProperty(w.navigator, 'maxTouchPoints', { get: () => (touch ? 5 : 0), configurable: true });
+      } catch (e) { }
       const of = w.fetch;
       w.fetch = function (u) {
         /* fetchMode：模拟阅读层预检判死的三种输入 */
@@ -271,6 +282,30 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
     const js2 = fs.readFileSync(path.join(ROOT, 'assets/js/study.js'), 'utf8');
     assert(/pointer:\s*coarse/.test(js2), 'study.js 缺少触屏检测');
     assert(/6000\s*:\s*9000/.test(js2), '触屏超时未比桌面短');
+  }
+
+  /* ---------- 10. 触屏可读性：默认放大字号 + 横屏全屏 ---------- */
+  {
+    const { w, d } = await loadPage('library.html', null, { touch: true });
+    const row = d.querySelectorAll('#main .dl-row')[0];
+    fire(w, row, 'click');
+    const fr = d.getElementById('pdfFrame');
+    assert(fr.getAttribute('src').indexOf('#zoom=') > 0, '触屏不再用 FitH（小字根源），改按可读字号', fr.getAttribute('src'));
+    const fsb = d.getElementById('pdfFs');
+    assert(fsb && !fsb.hidden, '触屏显示「横屏全屏」按钮');
+    const tip = d.getElementById('pdfTip');
+    assert(tip && /横屏/.test(tip.textContent), '触屏提示语提到横屏', tip && tip.textContent);
+    fire(w, fsb, 'click');
+    await new Promise((r) => setTimeout(r, 100));
+    assert(!d.getElementById('pdfMask').hidden, '点横屏全屏不影响阅读层');
+    assert(fr.getAttribute('src').indexOf('#zoom=') > 0, '横屏全屏不重设 iframe.src（避免重载几十 MB、页码归零）');
+  }
+  {
+    const { w, d } = await loadPage('library.html');
+    const row = d.querySelectorAll('#main .dl-row')[0];
+    fire(w, row, 'click');
+    assert(/#view=FitH$/.test(d.getElementById('pdfFrame').getAttribute('src')), '桌面仍按页宽适配');
+    assert(d.getElementById('pdfFs').hidden, '桌面隐藏横屏全屏按钮');
   }
 
   console.log(problems.length ? '\n❌ 失败：\n - ' + problems.join('\n - ') : `\n✅ 全部通过（${checks} 项）`);

@@ -287,6 +287,8 @@
           '<span class="pdf-hicon">' + svg('read', 18) + '</span>' +
           '<div class="pdf-hbody"><b id="pdfTitle"></b><span id="pdfSub"></span></div>' +
           '<div class="pdf-acts">' +
+            '<button class="pdf-btn" id="pdfFs" type="button" hidden>' +
+              svg('fullscreen', 13) + '<span>横屏全屏</span></button>' +
             '<a class="pdf-btn" id="pdfNew" target="_blank" rel="noopener">' +
               svg('external', 13) + '<span>新窗口</span></a>' +
             '<a class="pdf-btn" id="pdfDl" download>' + svg('download', 13) + '<span>下载</span></a>' +
@@ -298,10 +300,15 @@
           '<div class="pdf-status" id="pdfStatus">正在打开…</div>' +
           '<iframe id="pdfFrame" title="PDF 阅读器"></iframe>' +
         '</div>' +
-        '<p class="pdf-tip">框里一直空白的话，点「新窗口」——Safari 会用它自带的 PDF 阅读器；' +
-          '大教材建议在 Wi-Fi 下打开。</p>' +
+        '<p class="pdf-tip" id="pdfTip"></p>' +
       '</div>';
     document.body.appendChild(RD);
+
+    /* 「横屏全屏」只在触屏上有意义：手机竖屏按页宽适配会把字压得极小 */
+    if (rdIsTouch()) RD.querySelector('#pdfFs').hidden = false;
+    RD.querySelector('#pdfFs').addEventListener('click', function () { rdFsToggle(); });
+    document.addEventListener('fullscreenchange', rdFsSync);
+    document.addEventListener('webkitfullscreenchange', rdFsSync);
 
     RD.querySelector('#pdfClose').addEventListener('click', function () { rdClose(false); });
     RD.addEventListener('click', function (e) { if (e.target === RD) rdClose(false); });
@@ -336,8 +343,12 @@
     st.hidden = false;
     st.textContent = '正在打开…' + fmtSize(f.size) + (f.pages ? ' / ' + f.pages + ' 页' : '') +
       '，首次加载稍慢';
-    /* #view=FitH 让阅读器一上来就按页宽显示，手机上不用手动缩 */
-    w.querySelector('#pdfFrame').src = f.file + '#view=FitH';
+    /* 触屏竖屏下 #view=FitH（按页宽适配）会把整页 A4 压进手机宽度，字小到全程双指放大；
+       触屏改用 #zoom=140 直接给可读字号（配合「横屏全屏」字号还能再大一倍），桌面仍按页宽适配。 */
+    w.querySelector('#pdfFrame').src = f.file + (rdIsTouch() ? '#zoom=140' : '#view=FitH');
+    w.querySelector('#pdfTip').innerHTML = rdIsTouch()
+      ? '字太小？点「横屏全屏」把手机横过来读，能拿到的字号最大；也能双指缩放。教材建议在 Wi-Fi 下打开。'
+      : '框里一直空白的话，点「新窗口」——浏览器会用它自带的 PDF 阅读器；大教材建议在 Wi-Fi 下打开。';
     w.hidden = false;
     rdOpen = true;
     document.documentElement.classList.add('pdf-lock');
@@ -371,13 +382,45 @@
     });
   }
 
-  /* 触屏判定：超时分档按它来 */
+  /* 触屏判定：超时分档、字号档位、「横屏全屏」按钮都按它来 */
   function rdIsTouch() {
     try {
       if (global.matchMedia && global.matchMedia('(pointer: coarse)').matches) return true;
       if (global.navigator && global.navigator.maxTouchPoints > 0) return true;
     } catch (e) { }
     return false;
+  }
+
+  function rdFsFull() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  /* 「横屏全屏」：只把阅读层本身拉满屏，不碰 iframe.src —— 一碰 src 就会从头
+     重新加载几十 MB，页码也回到第一页。锁横屏失败不打扰用户（系统多半不让自动转）。 */
+  function rdFsToggle() {
+    if (rdFsFull()) {
+      try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) { }
+      return;
+    }
+    var modal = RD && RD.querySelector('.pdf-modal');
+    if (!modal) return;
+    try {
+      if (modal.requestFullscreen) modal.requestFullscreen();
+      else if (modal.webkitRequestFullscreen) modal.webkitRequestFullscreen();
+    } catch (e) { }
+    rdFsSync();
+  }
+
+  /* 进入全屏后顺手锁横屏（只能在用户手势触发的全屏里生效，失败就算了）；
+     同时把按钮文案切成「退出全屏」，用户随时能退出来。 */
+  function rdFsSync() {
+    var b = RD && RD.querySelector('#pdfFs');
+    if (!b) return;
+    var on = !!rdFsFull();
+    b.querySelector('span').textContent = on ? '退出全屏' : (rdIsTouch() ? '横屏全屏' : '全屏');
+    if (on) {
+      try { if (global.screen && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape'); } catch (e) { }
+    }
   }
 
   /* 预检：HEAD 一下。判据从宽——只有明确坏了才降级，拿不准一律放行
@@ -425,6 +468,10 @@
     rdOpen = false;
     rdCur = null; rdLoaded = false; rdFailed = false;
     clearTimeout(rdTimer);
+    /* 退出时把全屏态也收掉，否则手机上会卡在全屏的空页面上 */
+    if (rdFsFull()) {
+      try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) { }
+    }
     var w = RD;
     if (w) {
       /* 先把 iframe 导航走，几十 MB 的 PDF 内存才能还给浏览器 */

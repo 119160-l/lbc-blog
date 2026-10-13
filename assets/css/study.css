@@ -278,15 +278,21 @@ a.sec-entry:hover .se-go { transform: translateX(5px); }
    这一层是全屏的，里面交给浏览器自带的 PDF 阅读器渲染。 */
 .pdf-mask {
   position: fixed; inset: 0; z-index: 940;
-  display: grid; place-items: center; padding: 22px;
+  display: grid; place-items: center; padding: 14px;
   background: rgba(3, 9, 20, .62);
   backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
 }
 .pdf-modal {
-  width: min(1180px, 100%); height: min(92vh, 100%);
+  width: min(1360px, 100%); height: min(95vh, 100%);
   display: flex; flex-direction: column; overflow: hidden;
   border-radius: 18px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45);
 }
+/* 全屏时拉满整屏，PDF 就是整个可视区（字号能再大一截）；顺手藏掉提示行换高度 */
+.pdf-modal:fullscreen, .pdf-modal:-webkit-full-screen {
+  width: 100%; height: 100%; max-height: none; border-radius: 0;
+  background: var(--panel-2); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.pdf-modal:fullscreen .pdf-tip, .pdf-modal:-webkit-full-screen .pdf-tip { display: none; }
 .pdf-head {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
@@ -312,6 +318,7 @@ a.sec-entry:hover .se-go { transform: translateX(5px); }
   transition: color .18s var(--ease), background .18s var(--ease), border-color .18s var(--ease);
 }
 .pdf-btn:hover { background: var(--soft-blue); border-color: var(--accent); }
+.pdf-btn.on { background: var(--soft-blue); border-color: var(--accent); color: var(--accent); }
 .pdf-btn.primary {
   color: #fff; border-color: transparent;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -365,7 +372,7 @@ html.pdf-lock { overflow: hidden; }
   .pdf-head { padding-top: calc(10px + env(safe-area-inset-top)); }
   .pdf-hicon { display: none; }
   .pdf-hbody { flex: 1 1 100%; order: 1; }
-  .pdf-acts { flex: 1 1 100%; order: 2; justify-content: flex-end; }
+  .pdf-acts { flex: 1 1 100%; order: 2; justify-content: flex-end; flex-wrap: wrap; }
   .pdf-btn { padding: 6px 11px; font-size: 12px; }
   .pdf-tip { padding: 8px 12px; }
   .pdf-tip { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
