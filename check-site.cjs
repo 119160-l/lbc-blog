@@ -1,5 +1,5 @@
 /* ==========================================================================
-   check-site.cjs —— 发布前的整页回归校验（72 项断言）
+   check-site.cjs —— 发布前的整页回归校验（70 项断言）
 
    用法：
      /Users/lbc/.workbuddy/binaries/node/versions/22.22.2-6/bin/node check-site.cjs
@@ -13,7 +13,7 @@
      5. #read=<id> 直链自动进阅读层
      6. 课程页只列本课 PDF，且不预加载 iframe
      7. 9 秒未加载出来的兜底按钮
-     8. 预检判死自动降级：断网 / HTTP 404 / 返回网页 → 撤 iframe + 降级面板 + 重试
+     8. 预检只认铁证：4xx/返回网页才降级；fetch 直接失败不误杀（保留 iframe 等超时兜底）
      9. 矩阵论两篇知识讲解的 7 张配图全部落地（src 存在 / loading=lazy / alt 未被污染）
     10. 小屏与触屏适配：safe-area、降级面板操作行、pointer:coarse、触屏超时更短
     11. 触屏可读性：默认 #zoom=140 可读字号（不用 FitH）、横屏全屏按钮、提示语、桌面不变
@@ -229,7 +229,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
     assert(d.querySelectorAll('#postBody .img-missing, #main .img-missing').length === 0, id + ' 仍有「配图缺失」占位');
   }
 
-  /* ---------- 7. 加载超时的兜底：9 秒后给出「用系统阅读器打开」 ---------- */
+  /* ---------- 7. 加载超时的兜底：9 秒后给出「重试 + 系统阅读器」 ---------- */
   {
     const { w, d } = await loadPage('library.html');
     const row = d.querySelectorAll('#main .dl-row')[0];
@@ -239,6 +239,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
     const st = d.getElementById('pdfStatus');
     assert(!st.hidden, '超时提示仍然可见');
     assert(/pdf-slow/.test(st.innerHTML), '超时后切换到兜底版式');
+    assert(!!st.querySelector('[data-rd-retry]'), '超时面板也带重试按钮（不只一个出口）');
     const alt = st.querySelector('a.pdf-btn');
     assert(alt && /^files\/.+\.pdf$/.test(alt.getAttribute('href')) && alt.getAttribute('target') === '_blank',
       '兜底按钮指向 PDF 且新窗口打开', alt && alt.getAttribute('href'));
@@ -248,9 +249,21 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
       '兜底出现时 iframe 仍在等同一个文件');
   }
 
-  /* ---------- 8. 预检判死：自动降级，不挂 iframe 干等 ---------- */
+  /* ---------- 8. 预检只认铁证：文件真的没了才降级；fetch 失败不误杀 ---------- */
+  /* fetch 直接 reject（浏览器限制 / 断网）时，iframe 可能照样能加载 ——
+     不能因此撤掉它，更不能断言「网络没连通」，只能交给超时兜底。 */
+  {
+    const { w, d } = await loadPage('library.html', null, 'reject');
+    const row = d.querySelectorAll('#main .dl-row')[0];
+    fire(w, row, 'click');
+    await new Promise((r) => setTimeout(r, 300));
+    const fr = d.getElementById('pdfFrame');
+    assert(/files\/.+\.pdf/.test(fr.getAttribute('src') || ''), 'fetch 失败不撤 iframe（可能照样能读）', fr.getAttribute('src'));
+    const st = d.getElementById('pdfStatus');
+    assert(st && !st.hidden && /正在打开/.test(st.textContent), 'fetch 失败不立刻弹「网络没连通」', st && st.textContent);
+  }
+  /* HTTP 4xx / 返回网页才是铁证：立刻降级 */
   for (const [mode, kw, label] of [
-    ['reject', '网络', '断网'],
     ['404', '404', 'HTTP 404'],
     ['html', '不是 PDF', '返回网页'],
   ]) {

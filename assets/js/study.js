@@ -273,7 +273,7 @@
           必须预检的原因：iframe 的 load 事件对错误页也会触发，只靠它会把状态层藏掉。
        ② 触屏 6s / 桌面 9s 还没加载出来 → 「用系统阅读器打开」。
        ③ 降级面板自带「重试」，应付移动网络抽风。 */
-  var RD = null, rdOpen = false, rdTimer = null, rdCur = null, rdLoaded = false, rdFailed = false, rdSeq = 0;
+  var RD = null, rdOpen = false, rdTimer = null, rdCur = null, rdLoaded = false, rdFailed = false, rdNetFail = false, rdSeq = 0;
 
   function rdEnsure() {
     if (RD) return RD;
@@ -353,32 +353,38 @@
     rdOpen = true;
     document.documentElement.classList.add('pdf-lock');
     try { history.pushState({ pdf: f.id }, '', '#read=' + encodeURIComponent(f.id)); } catch (e) { }
-    rdCur = f; rdLoaded = false; rdFailed = false;
+    rdCur = f; rdLoaded = false; rdFailed = false; rdNetFail = false;
     clearTimeout(rdTimer);
-    /* 兜底一：等太久了就主动给一个「用系统阅读器打开」的出口，别让手机用户干等。
-       触屏上对着一层空白干等更折磨人，超时砍到 6 秒。 */
+    /* 兜底一：等太久了就主动给出路，别让手机用户干等。
+       触屏上对着一层空白干等更折磨人，超时砍到 6 秒。
+       面板同时给「重试」和「系统阅读器」两个出口。 */
     rdTimer = setTimeout(function () {
       if (!rdOpen || rdFailed) return;
       var s = w.querySelector('#pdfStatus');
       if (!s || s.hidden) return;
-      s.innerHTML = '<div class="pdf-slow">' +
-        '<span>好像加载得有点慢…</span>' +
-        '<a class="pdf-btn primary" href="' + esc(f.file) + '" target="_blank" rel="noopener">' +
-          svg('external', 13) + '<span>用系统阅读器打开</span></a>' +
-        '<span class="pdf-slow-tip">用 Safari 自带的阅读器通常立刻就能翻页</span>' +
-        '</div>';
+      s.innerHTML = rdPanelHTML(f,
+        rdNetFail ? '网络似乎不太顺，这份 PDF 还没传过来。' : '加载得有点慢，这份教材比较大。',
+        rdNetFail ? '换个网络环境（Wi-Fi / 流量）再试，通常就好了。'
+          : '教材建议在 Wi-Fi 下打开；系统自带的阅读器通常立刻就能翻页。');
     }, rdIsTouch() ? 6000 : 9000);
-    /* 兜底二：并行预检。iframe 上面已经同步挂上（成功路径零延迟），这个 HEAD 只负责
-       快速纠错——404 / 断网 / 返回的是网页，几百毫秒内就换成降级面板。 */
+    /* 兜底二：并行预检。iframe 上面已经同步挂上（成功路径零延迟），这个 HEAD 只用来
+       抓「铁证」——文件真的没了（4xx/5xx），或服务器返回的是一张网页而不是 PDF。
+       fetch 本身失败（浏览器限制、断网）**不**作为判死依据：那种情况下 iframe 可能照样
+       能加载，iframe 能不能加载才是唯一可信的判据，所以只记录状态、交给上面的超时兜底。 */
     rdProbe(f, function (r) {
       if (!rdOpen || seq !== rdSeq || rdFailed) return;
-      if (r.state === 'ok' || r.state === 'unknown') return;
+      if (r.state === 'net') { rdNetFail = true; return; }
+      if (r.state !== 'http' && r.state !== 'type') return;
       clearTimeout(rdTimer);
       rdFailed = true;
       w.querySelector('#pdfFrame').src = 'about:blank';
       var s2 = w.querySelector('#pdfStatus');
       s2.hidden = false;
-      s2.innerHTML = rdFailHTML(f, r);
+      s2.innerHTML = rdPanelHTML(f,
+        r.state === 'http'
+          ? '文件取不回来（HTTP ' + (r.status || '错误') + '），可能被移动或删除了。'
+          : '这个地址返回的不是 PDF，链接可能过期了。',
+        '如果链接还有效，可以点「新窗口」或 ↓ 让系统自己再试一次。');
     });
   }
 
@@ -423,8 +429,8 @@
     }
   }
 
-  /* 预检：HEAD 一下。判据从宽——只有明确坏了才降级，拿不准一律放行
-     （服务器不实现 HEAD 很常见；预检自己卡住也不能反过来拖慢打开）。 */
+  /* 预检：HEAD 一下，只认「铁证」——文件真的取不到（4xx/5xx），或服务器回的明显是网页。
+     拿不准一律放行（服务器不实现 HEAD 很常见；预检自己卡住更不能反过来拖慢打开）。 */
   function rdProbe(f, done) {
     var settled = false;
     var fin = function (r) { if (!settled) { settled = true; done(r); } };
@@ -440,17 +446,18 @@
         if (!res.ok) return fin({ state: 'http', status: res.status });
         var ct = '';
         try { ct = res.headers && res.headers.get ? (res.headers.get('content-type') || '') : ''; } catch (e) { }
-        if (ct && !/pdf|octet-stream|binary/i.test(ct)) return fin({ state: 'type', ct: ct });
+        /* 只在「明确是网页/XML」时判死——CDN 常把 404 页返回成 200 的 HTML。
+           application/octet-stream、application/download 之类的怪异类型一律放行。 */
+        if (ct && /text\/html|application\/xhtml|text\/xml|application\/xml/i.test(ct)) {
+          return fin({ state: 'type', ct: ct });
+        }
         fin({ state: 'ok' });
       })
       .catch(function () { clearTimeout(timer); fin({ state: 'net' }); });
   }
 
-  /* 降级面板：说清哪里坏了，给「重试」和「系统阅读器」两个出口 */
-  function rdFailHTML(f, r) {
-    var msg = r.state === 'net' ? '网络似乎没连通，检查一下 Wi-Fi 或流量。'
-      : r.state === 'http' ? '文件取不回来（HTTP ' + (r.status || '错误') + '），可能被移动或删除了。'
-        : '这个地址返回的不是 PDF，链接可能过期了。';
+  /* 降级面板：一句话说清现状 + 两个出口（重试 / 系统阅读器），别让用户干等也没退路 */
+  function rdPanelHTML(f, msg, tip) {
     return '<div class="pdf-slow">' +
       '<span>' + msg + '</span>' +
       '<span class="pdf-slow-acts">' +
@@ -459,14 +466,14 @@
         '<a class="pdf-btn" href="' + esc(f.file) + '" target="_blank" rel="noopener">' +
           svg('external', 13) + '<span>用系统阅读器打开</span></a>' +
       '</span>' +
-      '<span class="pdf-slow-tip">重试会重新拉取；实在不行就点右边的 ↓ 下载到本地看</span>' +
+      '<span class="pdf-slow-tip">' + (tip || '重试会重新拉取；实在不行就点右边的 ↓ 下载到本地看') + '</span>' +
       '</div>';
   }
 
   function rdClose(fromHistory) {
     if (!rdOpen) return;
     rdOpen = false;
-    rdCur = null; rdLoaded = false; rdFailed = false;
+    rdCur = null; rdLoaded = false; rdFailed = false; rdNetFail = false;
     clearTimeout(rdTimer);
     /* 退出时把全屏态也收掉，否则手机上会卡在全屏的空页面上 */
     if (rdFsFull()) {
