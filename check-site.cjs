@@ -42,10 +42,11 @@ function inlineScripts(html, noSlices) {
   const missing = [];
   const out = html.replace(/<script\s+src="([^"]+)"([^>]*)><\/script>/g, (m, src, rest) => {
     if (/^https?:/.test(src)) return m;
-    const p = path.join(ROOT, src.split('?')[0]);
+    const clean = src.split('?')[0];           /* 资源 URL 现在带 ?v= 版本戳 */
+    const p = path.join(ROOT, clean);
     if (!fs.existsSync(p)) { missing.push(src); return `<!-- 缺文件：${src} -->`; }
     /* noSlices：把切片清单换成空的，用来测「没有切片时走 iframe」那条分支 */
-    const body = (noSlices && /slices\.js$/.test(src))
+    const body = (noSlices && /slices\.js$/.test(clean))
       ? 'window.BLOG_SLICES = {};'
       : fs.readFileSync(p, 'utf8').replace(/<\/script/gi, '<\\/script');
     return `<script${rest}>${body}</script>`;
@@ -405,6 +406,25 @@ function iframeRow(d) {
     await new Promise((r) => setTimeout(r, 150));
     assert(/\/p0012\.webp$/.test(img.getAttribute('src')), '重开接着上次读到的页', img.getAttribute('src'));
     fire(w, d.getElementById('pdfClose'), 'click');
+  }
+
+  /* ---------- 12. 资源版本戳：防止"发布成功但手机还在用旧 JS" ---------- */
+  {
+    const { computeStamp, HTMLS } = require('./stamp.cjs');
+    const want = computeStamp(ROOT);
+    const bad = [];
+    let total = 0;
+    for (const f of HTMLS) {
+      const html = fs.readFileSync(path.join(ROOT, f), 'utf8');
+      const urls = [...html.matchAll(/(?:src|href)="(assets\/[^"?#]+)(\?v=[0-9a-f]+)?"/g)];
+      if (!urls.length) { bad.push(f + ' 没有资源引用'); continue; }
+      for (const [, u, v] of urls) {
+        total += 1;
+        if (v !== `?v=${want}`) bad.push(`${f}: ${u}${v || '(无戳)'}`);
+      }
+    }
+    assert(!bad.length, `资源 URL 都带最新版本戳（v=${want}，共 ${total} 处）`,
+      bad.slice(0, 4).join(' | ') + (bad.length > 4 ? ` …共 ${bad.length} 处` : ''));
   }
 
   console.log(problems.length ? '\n❌ 失败：\n - ' + problems.join('\n - ') : `\n✅ 全部通过（${checks} 项）`);
