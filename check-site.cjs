@@ -38,13 +38,16 @@ function ok() { checks++; }
 function bad(name, detail) { checks++; problems.push(name + (detail ? ' —— ' + detail : '')); }
 function assert(cond, name, detail) { cond ? ok() : bad(name, detail); }
 
-function inlineScripts(html) {
+function inlineScripts(html, noSlices) {
   const missing = [];
   const out = html.replace(/<script\s+src="([^"]+)"([^>]*)><\/script>/g, (m, src, rest) => {
     if (/^https?:/.test(src)) return m;
     const p = path.join(ROOT, src.split('?')[0]);
     if (!fs.existsSync(p)) { missing.push(src); return `<!-- 缺文件：${src} -->`; }
-    const body = fs.readFileSync(p, 'utf8').replace(/<\/script/gi, '<\\/script');
+    /* noSlices：把切片清单换成空的，用来测「没有切片时走 iframe」那条分支 */
+    const body = (noSlices && /slices\.js$/.test(src))
+      ? 'window.BLOG_SLICES = {};'
+      : fs.readFileSync(p, 'utf8').replace(/<\/script/gi, '<\\/script');
     return `<script${rest}>${body}</script>`;
   });
   return { html: out, missing };
@@ -55,7 +58,7 @@ async function loadPage(rel, urlOverride, opts) {
   const fetchMode = o.fetchMode;
   const touch = !!o.touch;
   const html = fs.readFileSync(path.join(ROOT, rel.split('?')[0]), 'utf8');
-  const { html: inlined, missing } = inlineScripts(html);
+  const { html: inlined, missing } = inlineScripts(html, !!o.noSlices);
   const url = 'https://site.local/' + (urlOverride || rel);
   const vc = new VirtualConsole();
   vc.on('jsdomError', () => { });   /* 点 <a download> 会报「not implemented: navigation」，忽略 */
@@ -106,13 +109,12 @@ async function loadPage(rel, urlOverride, opts) {
 
 const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Object.assign({ bubbles: true, cancelable: true }, init)));
 
-/* 大教材走「按页图」阅读器（不碰 iframe），所以测 iframe 分支时必须挑一本**没切片**的，
-   否则会对着切片书断言 iframe，自然全错 */
-const SLICES_MAP = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/slices.js'), 'utf8')
-  .match(/window\.BLOG_SLICES = (\{[\s\S]*?\});/)[1]);
+/* 大教材走「按页图」阅读器（不碰 iframe）。现在 9 本全有切片，所以测 iframe 分支时
+   要用 { noSlices: true } 加载（把切片清单换成空的），并按**页面运行时的**清单挑书。 */
 function iframeRow(d) {
-  const r = [...d.querySelectorAll('#main .dl-row')].find((x) => !SLICES_MAP[x.getAttribute('data-fid')]);
-  if (!r) throw new Error('资料页上找不到没切片的教材，iframe 分支没法测');
+  const map = (d.defaultView && d.defaultView.BLOG_SLICES) || {};
+  const r = [...d.querySelectorAll('#main .dl-row')].find((x) => !map[x.getAttribute('data-fid')]);
+  if (!r) throw new Error('页面上找不到没切片的教材，iframe 分支没法测');
   return r;
 }
 
@@ -137,7 +139,8 @@ function iframeRow(d) {
   /* ---------- 2. 学习资料页：科目层 + 搜索 + 在线阅读区 ---------- */
   let html = null, win = null, rows = null;
   {
-    const { w, d } = await loadPage('library.html');
+    /* noSlices：这一节给第 3 节的 iframe 分支当底稿（现在 9 本都有切片了） */
+    const { w, d } = await loadPage('library.html', null, { noSlices: true });
     html = d; win = w;
     const cards = d.querySelectorAll('#main .course-card');
     assert(cards.length === 5, '科目卡片数', cards.length + ' 个');
@@ -204,7 +207,7 @@ function iframeRow(d) {
 
   /* ---------- 4. 直链 #read=<id> 打开就是那一本 ---------- */
   {
-    const { d } = await loadPage('library.html', 'library.html#read=f-ogata-modern-control-2010');
+    const { d } = await loadPage('library.html', 'library.html#read=f-ogata-modern-control-2010', { noSlices: true });
     const fr = d.getElementById('pdfFrame');
     const mask = d.getElementById('pdfMask');
     assert(mask && !mask.hidden, '带 #read= 打开时自动进入阅读层');
@@ -252,7 +255,7 @@ function iframeRow(d) {
 
   /* ---------- 7. 加载超时的兜底：9 秒后给出「重试 + 系统阅读器」 ---------- */
   {
-    const { w, d } = await loadPage('library.html');
+    const { w, d } = await loadPage('library.html', null, { noSlices: true });
     const row = iframeRow(d);
     const fid = row.getAttribute('data-fid');
     fire(w, row, 'click');
@@ -274,7 +277,7 @@ function iframeRow(d) {
   /* fetch 直接 reject（浏览器限制 / 断网）时，iframe 可能照样能加载 ——
      不能因此撤掉它，更不能断言「网络没连通」，只能交给超时兜底。 */
   {
-    const { w, d } = await loadPage('library.html', null, 'reject');
+    const { w, d } = await loadPage('library.html', null, { fetchMode: 'reject', noSlices: true });
     const row = iframeRow(d);
     fire(w, row, 'click');
     await new Promise((r) => setTimeout(r, 300));
@@ -288,7 +291,7 @@ function iframeRow(d) {
     ['404', '404', 'HTTP 404'],
     ['html', '不是 PDF', '返回网页'],
   ]) {
-    const { w, d } = await loadPage('library.html', null, mode);
+    const { w, d } = await loadPage('library.html', null, { fetchMode: mode, noSlices: true });
     const row = iframeRow(d);
     fire(w, row, 'click');
     await new Promise((r) => setTimeout(r, 300));
@@ -320,7 +323,7 @@ function iframeRow(d) {
 
   /* ---------- 10. 触屏可读性：默认放大字号 + 横屏全屏 ---------- */
   {
-    const { w, d } = await loadPage('library.html', null, { touch: true });
+    const { w, d } = await loadPage('library.html', null, { touch: true, noSlices: true });
     const row = iframeRow(d);
     fire(w, row, 'click');
     const fr = d.getElementById('pdfFrame');
@@ -335,7 +338,7 @@ function iframeRow(d) {
     assert(fr.getAttribute('src').indexOf('#zoom=') > 0, '横屏全屏不重设 iframe.src（避免重载几十 MB、页码归零）');
   }
   {
-    const { w, d } = await loadPage('library.html');
+    const { w, d } = await loadPage('library.html', null, { noSlices: true });
     const row = iframeRow(d);
     fire(w, row, 'click');
     assert(/#view=FitH$/.test(d.getElementById('pdfFrame').getAttribute('src')), '桌面仍按页宽适配');
@@ -351,8 +354,9 @@ function iframeRow(d) {
     const books = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/files.js'), 'utf8')
       .match(/window\.BLOG_FILES = (\[[\s\S]*\]);/)[1]);
     const sliced = books.filter((f) => SL[f.id]);
-    assert(sliced.length >= 3, '至少 3 本大教材走切片', sliced.length + ' 本');
-    assert(books.some((f) => !SL[f.id]), '小 PDF 不切片（保留原版直读）');
+    /* 全部教材都切了片：点开任何一本都不会再把 PDF 丢给浏览器（手机上那等于触发下载） */
+    assert(sliced.length === books.length,
+      '9 本教材全部有切片（点开永远不会触发下载）', sliced.length + '/' + books.length + ' 本');
     const bad = [];
     for (const f of sliced) {
       const m = SL[f.id];
@@ -370,6 +374,13 @@ function iframeRow(d) {
     await new Promise((r) => setTimeout(r, 200));
     assert(d.getElementById('pdfSlice') && !d.getElementById('pdfSlice').hidden, '切片阅读层已打开');
     assert(d.getElementById('pdfFrame').hidden, '切片模式不挂 iframe（不会先啃几十 MB）');
+    /* 手机上的坏下载入口必须收起来：这两个按钮一点就是「下载一个打不开的 PDF」 */
+    assert(d.getElementById('pdfNew').hidden && d.getElementById('pdfDl').hidden,
+      '切片模式收起「新窗口 / 下载」按钮');
+    const tipEl = d.getElementById('pdfTip');
+    assert(!!tipEl.querySelector('a.pdf-orig') && /^files\/.+\.pdf$/.test(tipEl.querySelector('a.pdf-orig').getAttribute('href')),
+      '原版 PDF 降级为提示行里的次要链接', tipEl.textContent);
+    assert(/长按/.test(tipEl.textContent), '提示长按图片可存页（手机上最可靠的保存方式）');
     const img = d.getElementById('slImg');
     assert(img.getAttribute('src') === m.dir + '/p0001.webp', '默认显示第 1 页', img.getAttribute('src'));
     assert(fs.existsSync(path.join(ROOT, img.getAttribute('src'))), '第 1 页切片真实存在');

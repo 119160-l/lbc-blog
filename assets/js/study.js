@@ -394,6 +394,8 @@
     if (rdHasSlices(f)) { rdOpenSlices(w, f); return; }
     w.querySelector('#pdfSlice').hidden = true;
     w.querySelector('#pdfFrame').hidden = false;
+    w.querySelector('#pdfNew').hidden = false;
+    w.querySelector('#pdfDl').hidden = false;
     var st = w.querySelector('#pdfStatus');
     st.hidden = false;
     st.textContent = '正在打开…' + fmtSize(f.size) + (f.pages ? ' / ' + f.pages + ' 页' : '') +
@@ -554,8 +556,14 @@
     var sl = w.querySelector('#pdfSlice');
     sl.hidden = false;
     sl.classList.remove('zoomed');
-    w.querySelector('#pdfTip').innerHTML = '左右滑动翻页，点图可放大细看；' +
-      '要搜索或复制公式，点右上角「新窗口」开原版 PDF。';
+    /* 手机上「下载原版 PDF」几乎必然变成一个打不开的文件，还占流量 —— 收进提示行当次要出口，
+       头部只留阅读相关的按钮，从源头上断掉坏下载的入口 */
+    w.querySelector('#pdfNew').hidden = true;
+    w.querySelector('#pdfDl').hidden = true;
+    w.querySelector('#pdfTip').innerHTML =
+      '左右滑动翻页，点图放大；<b>长按图片</b>可把这页存到手机。' +
+      '要查公式或复制文字，用这里的<a class="pdf-orig" href="' + esc(f.file) +
+      '" target="_blank" rel="noopener">原版 PDF</a>（几十 MB，建议在电脑上打开）。';
     /* 上次读到哪一页就接着读（localStorage 不可用时静默忽略） */
     var p = 0;
     try { p = parseInt(global.localStorage.getItem('zb-page:' + f.id) || '0', 10) || 0; } catch (e) { }

@@ -51,14 +51,16 @@ def load_books():
     return json.loads(m.group(1))
 
 
-def targets(books, min_mb=MIN_MB):
+def targets(books, min_mb=None):
+    """min_mb 不给默认参数、调用时再读全局，--min-mb 开关才生效"""
+    if min_mb is None:
+        min_mb = MIN_MB
     out = []
     for b in books:
         size_mb = (b.get('size') or 0) / 1048576
         if size_mb >= min_mb:
             out.append((b, size_mb))
     return out
-
 
 def page_pix(pymupdf, page, target_w):
     """按目标页宽渲染灰度图（扫描件本来就是黑白，灰度不丢信息、体积减半）"""
@@ -168,6 +170,11 @@ def do_all(books, target_w, q, force=False):
 if __name__ == '__main__':
     args = sys.argv[1:]
     cmd = args[0] if args else 'sample'
+    # 全局开关：--min-mb=0 表示「全部都切」（矢量小 PDF 也切）
+    for a in list(args):
+        if a.startswith('--min-mb='):
+            MIN_MB = float(a.split('=', 1)[1])
+            args.remove(a)
     books = load_books()
     if cmd == 'list':
         print('会被切的文件（≥ %.0f MB）：' % MIN_MB)

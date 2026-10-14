@@ -353,9 +353,14 @@ html.pdf-lock { overflow: hidden; }
   display: block; max-width: 100%; max-height: 100%; object-fit: contain;
   border-radius: 6px; background: #fff;
   box-shadow: 0 8px 30px rgba(0, 0, 0, .28);
-  -webkit-user-drag: none; user-select: none;
+  -webkit-user-drag: none;
+  /* 允许长按保存图片：这是手机上把这一页"存下来"最省事、也最不会失败的办法 */
+  -webkit-touch-callout: default;
   transition: opacity .16s var(--ease);
 }
+/* 提示行里的「原版 PDF」次要链接 */
+.pdf-orig { color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; }
+.pdf-tip b { color: var(--text); }
 .sl-stage img.loading { opacity: .25; }
 .sl-stage img.bad { opacity: .3; }
 /* 点一下放大成原尺寸，横向拖动看细节（公式、上下标） */
