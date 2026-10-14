@@ -84,13 +84,25 @@ async function loadPage(rel, urlOverride, opts) {
         try { s = new w.URL(String(u), 'https://site.local/'); } catch (e) { }
         if (s && s.host === 'site.local') {
           const p = path.join(ROOT, decodeURIComponent(s.pathname.replace(/^\//, '')));
-          return fs.existsSync(p)
-            ? Promise.resolve({
+          if (fs.existsSync(p)) {
+            return Promise.resolve({
               ok: true, status: 200,
               headers: { get: (h) => String(h).toLowerCase() === 'content-type' ? 'application/pdf' : null },
               text: () => Promise.resolve(fs.readFileSync(p, 'utf8')),
-            })
-            : Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve('') });
+            });
+          }
+          /* files/ 下的 PDF 与切片是"本地产物"，不进仓库、也不该强留磁盘
+             （360 MB，可用 fetch-files.mjs 从线上取回）。
+             预检只关心响应是不是 200 + application/pdf，所以这里合成一个假的，
+             免得"把 PDF 删了省空间"这件事把断言搞挂，误导成代码坏了。 */
+          if (/^files\/.+\.pdf$/.test(decodeURIComponent(s.pathname.replace(/^\//, '')))) {
+            return Promise.resolve({
+              ok: true, status: 200,
+              headers: { get: (h) => String(h).toLowerCase() === 'content-type' ? 'application/pdf' : null },
+              text: () => Promise.resolve('%PDF-1.4\n% 桩文件：真实 PDF 未保存在本地\n'),
+            });
+          }
+          return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve('') });
         }
         if (of) return of.apply(this, arguments);
         return Promise.resolve({ ok: false, status: 404, text: () => Promise.resolve('') });
