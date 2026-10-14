@@ -106,6 +106,16 @@ async function loadPage(rel, urlOverride, opts) {
 
 const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Object.assign({ bubbles: true, cancelable: true }, init)));
 
+/* 大教材走「按页图」阅读器（不碰 iframe），所以测 iframe 分支时必须挑一本**没切片**的，
+   否则会对着切片书断言 iframe，自然全错 */
+const SLICES_MAP = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/slices.js'), 'utf8')
+  .match(/window\.BLOG_SLICES = (\{[\s\S]*?\});/)[1]);
+function iframeRow(d) {
+  const r = [...d.querySelectorAll('#main .dl-row')].find((x) => !SLICES_MAP[x.getAttribute('data-fid')]);
+  if (!r) throw new Error('资料页上找不到没切片的教材，iframe 分支没法测');
+  return r;
+}
+
 (async () => {
   /* ---------- 1. 首页 ---------- */
   {
@@ -145,7 +155,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
   /* ---------- 3. 点一行 → 就地打开阅读层 ---------- */
   {
     const d = html, w = win;
-    const row = rows[0];
+    const row = iframeRow(d);   /* 这一节测 iframe 阅读层，必须挑没切片的教材 */
     const fid = row.getAttribute('data-fid');
     const pdf = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/files.js'), 'utf8')
       .match(/window\.BLOG_FILES = (\[[\s\S]*\]);/)[1]).find((f) => f.id === fid);
@@ -194,11 +204,22 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
 
   /* ---------- 4. 直链 #read=<id> 打开就是那一本 ---------- */
   {
-    const { d } = await loadPage('library.html', 'library.html#read=f-or-textbook-5ed');
+    const { d } = await loadPage('library.html', 'library.html#read=f-ogata-modern-control-2010');
     const fr = d.getElementById('pdfFrame');
     const mask = d.getElementById('pdfMask');
     assert(mask && !mask.hidden, '带 #read= 打开时自动进入阅读层');
-    assert(fr && /or-textbook-5ed\.pdf/.test(fr.getAttribute('src') || ''), '直链指向对的那本', fr && fr.getAttribute('src'));
+    assert(fr && /ogata-modern-control-2010\.pdf/.test(fr.getAttribute('src') || ''),
+      '直链指向对的那本（未切片 → iframe）', fr && fr.getAttribute('src'));
+  }
+  {
+    /* 切片教材的直链：应该直接进按页图阅读器，而不是去啃整本 PDF */
+    const { d } = await loadPage('library.html', 'library.html#read=f-or-textbook-5ed');
+    const sl = d.getElementById('pdfSlice');
+    const fr = d.getElementById('pdfFrame');
+    assert(sl && !sl.hidden, '切片教材的直链进按页图阅读层');
+    assert(fr && fr.hidden, '切片教材直链不挂 iframe');
+    assert(/\/p0001\.webp$/.test((d.getElementById('slImg').getAttribute('src') || '')),
+      '切片直链定位到第 1 页', d.getElementById('slImg').getAttribute('src'));
   }
 
   /* ---------- 5. 课程页同样能读，且只列本课的 ---------- */
@@ -232,7 +253,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
   /* ---------- 7. 加载超时的兜底：9 秒后给出「重试 + 系统阅读器」 ---------- */
   {
     const { w, d } = await loadPage('library.html');
-    const row = d.querySelectorAll('#main .dl-row')[0];
+    const row = iframeRow(d);
     const fid = row.getAttribute('data-fid');
     fire(w, row, 'click');
     await new Promise((r) => setTimeout(r, 9600));
@@ -254,7 +275,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
      不能因此撤掉它，更不能断言「网络没连通」，只能交给超时兜底。 */
   {
     const { w, d } = await loadPage('library.html', null, 'reject');
-    const row = d.querySelectorAll('#main .dl-row')[0];
+    const row = iframeRow(d);
     fire(w, row, 'click');
     await new Promise((r) => setTimeout(r, 300));
     const fr = d.getElementById('pdfFrame');
@@ -268,7 +289,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
     ['html', '不是 PDF', '返回网页'],
   ]) {
     const { w, d } = await loadPage('library.html', null, mode);
-    const row = d.querySelectorAll('#main .dl-row')[0];
+    const row = iframeRow(d);
     fire(w, row, 'click');
     await new Promise((r) => setTimeout(r, 300));
     const mask = d.getElementById('pdfMask');
@@ -300,7 +321,7 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
   /* ---------- 10. 触屏可读性：默认放大字号 + 横屏全屏 ---------- */
   {
     const { w, d } = await loadPage('library.html', null, { touch: true });
-    const row = d.querySelectorAll('#main .dl-row')[0];
+    const row = iframeRow(d);
     fire(w, row, 'click');
     const fr = d.getElementById('pdfFrame');
     assert(fr.getAttribute('src').indexOf('#zoom=') > 0, '触屏不再用 FitH（小字根源），改按可读字号', fr.getAttribute('src'));
@@ -315,10 +336,64 @@ const fire = (w, el, type, init) => el.dispatchEvent(new w.MouseEvent(type, Obje
   }
   {
     const { w, d } = await loadPage('library.html');
-    const row = d.querySelectorAll('#main .dl-row')[0];
+    const row = iframeRow(d);
     fire(w, row, 'click');
     assert(/#view=FitH$/.test(d.getElementById('pdfFrame').getAttribute('src')), '桌面仍按页宽适配');
     assert(d.getElementById('pdfFs').hidden, '桌面隐藏横屏全屏按钮');
+  }
+
+  /* ---------- 11. 切片阅读器：大部头扫描教材按页图读 ---------- */
+  {
+    const { w, d } = await loadPage('library.html');
+    w.localStorage.clear();   /* 别让上一轮记住的页码影响断言 */
+    const SL = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/slices.js'), 'utf8')
+      .match(/window\.BLOG_SLICES = (\{[\s\S]*?\});/)[1]);
+    const books = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/js/files.js'), 'utf8')
+      .match(/window\.BLOG_FILES = (\[[\s\S]*\]);/)[1]);
+    const sliced = books.filter((f) => SL[f.id]);
+    assert(sliced.length >= 3, '至少 3 本大教材走切片', sliced.length + ' 本');
+    assert(books.some((f) => !SL[f.id]), '小 PDF 不切片（保留原版直读）');
+    const bad = [];
+    for (const f of sliced) {
+      const m = SL[f.id];
+      if (m.pages !== f.pages) bad.push(f.id + ' 页数对不上 ' + m.pages + '≠' + f.pages);
+      for (const p of [1, m.pages]) {
+        const pth = path.join(ROOT, m.dir, 'p' + String(p).padStart(4, '0') + '.' + m.ext);
+        if (!fs.existsSync(pth)) bad.push(f.id + ' 缺第 ' + p + ' 页');
+      }
+    }
+    assert(!bad.length, '切片文件齐全（抽查首页与末页）', bad.join(' | '));
+
+    const row = [...d.querySelectorAll('#main .dl-row')].find((r) => SL[r.getAttribute('data-fid')]);
+    const m = SL[row.getAttribute('data-fid')];
+    fire(w, row, 'click');
+    await new Promise((r) => setTimeout(r, 200));
+    assert(d.getElementById('pdfSlice') && !d.getElementById('pdfSlice').hidden, '切片阅读层已打开');
+    assert(d.getElementById('pdfFrame').hidden, '切片模式不挂 iframe（不会先啃几十 MB）');
+    const img = d.getElementById('slImg');
+    assert(img.getAttribute('src') === m.dir + '/p0001.webp', '默认显示第 1 页', img.getAttribute('src'));
+    assert(fs.existsSync(path.join(ROOT, img.getAttribute('src'))), '第 1 页切片真实存在');
+    assert(d.getElementById('slTot').textContent === String(m.pages), '总页数对得上');
+    assert(d.getElementById('slPrev').disabled, '第 1 页时「上一页」禁用');
+
+    fire(w, d.getElementById('slNext'), 'click');
+    assert(/\/p0002\.webp$/.test(img.getAttribute('src')), '点「下一页」翻到第 2 页', img.getAttribute('src'));
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert(/\/p0003\.webp$/.test(img.getAttribute('src')), '方向键也能翻页');
+    const num = d.getElementById('slNum');
+    num.value = '12';
+    num.dispatchEvent(new w.Event('change', { bubbles: true }));
+    assert(/\/p0012\.webp$/.test(img.getAttribute('src')), '输入页码可跳转', img.getAttribute('src'));
+    assert(fs.existsSync(path.join(ROOT, img.getAttribute('src'))), '跳转到的页真实存在');
+
+    /* 重新打开接着上次读到的那一页 */
+    fire(w, d.getElementById('pdfClose'), 'click');
+    assert(d.getElementById('pdfMask').hidden, '切片阅读层能关闭');
+    assert(!img.getAttribute('src'), '关闭后释放图片引用');
+    fire(w, row, 'click');
+    await new Promise((r) => setTimeout(r, 150));
+    assert(/\/p0012\.webp$/.test(img.getAttribute('src')), '重开接着上次读到的页', img.getAttribute('src'));
+    fire(w, d.getElementById('pdfClose'), 'click');
   }
 
   console.log(problems.length ? '\n❌ 失败：\n - ' + problems.join('\n - ') : `\n✅ 全部通过（${checks} 项）`);

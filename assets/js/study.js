@@ -16,6 +16,8 @@
   var POSTS = (global.BLOG_POSTS || []);
   var COURSES = (global.BLOG_COURSES || []);
   var SECTIONS = (global.BLOG_SECTIONS || []);
+  /* 教材切片清单（由 pdf-slices.py 生成）：大部头扫描件按页图读，不依赖浏览器 PDF 能力 */
+  var SLICES = (global.BLOG_SLICES || {});
 
   /* ------------------------------ 小工具 ------------------------------ */
   function fmtDate(d) {
@@ -274,6 +276,7 @@
        ② 触屏 6s / 桌面 9s 还没加载出来 → 「用系统阅读器打开」。
        ③ 降级面板自带「重试」，应付移动网络抽风。 */
   var RD = null, rdOpen = false, rdTimer = null, rdCur = null, rdLoaded = false, rdFailed = false, rdNetFail = false, rdSeq = 0;
+  var rdBook = null, rdPage = 1;   /* 切片阅读器状态：当前教材清单 / 当前页 */
 
   function rdEnsure() {
     if (RD) return RD;
@@ -299,6 +302,17 @@
         '<div class="pdf-body">' +
           '<div class="pdf-status" id="pdfStatus">正在打开…</div>' +
           '<iframe id="pdfFrame" title="PDF 阅读器"></iframe>' +
+          '<div class="pdf-slice" id="pdfSlice" hidden>' +
+            '<div class="sl-stage" id="slStage">' +
+              '<img id="slImg" alt="教材页面">' +
+              '<div class="sl-badge" id="slBadge">1 / 1</div>' +
+            '</div>' +
+            '<div class="sl-bar">' +
+              '<button class="sl-btn" id="slPrev" type="button">上一页</button>' +
+              '<label class="sl-now">第<input id="slNum" type="number" inputmode="numeric" min="1" value="1"><i>/</i><span id="slTot">1</span>页</label>' +
+              '<button class="sl-btn" id="slNext" type="button">下一页</button>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
         '<p class="pdf-tip" id="pdfTip"></p>' +
       '</div>';
@@ -326,6 +340,43 @@
         e.preventDefault();
         if (rdCur) rdOpenFile(rdCur);
       }
+      /* 切片取图失败时的「回到第 1 页」 */
+      if (t && t.closest && t.closest('[data-rd-restart]')) {
+        e.preventDefault();
+        if (rdCur) { try { global.localStorage.setItem('zb-page:' + rdCur.id, '1'); } catch (e) { } }
+        rdGoto(1);
+      }
+    });
+
+    /* ---- 切片阅读器的交互：左右滑动翻页、点图放大、页码跳转 ---- */
+    var stage = RD.querySelector('#slStage');
+    var tx = 0, ty = 0, tScroll = false;
+    stage.addEventListener('touchstart', function (e) {
+      var t = e.touches[0]; tx = t.clientX; ty = t.clientY;
+      tScroll = RD.querySelector('#pdfSlice').classList.contains('zoomed');
+    }, { passive: true });
+    stage.addEventListener('touchend', function (e) {
+      if (!rdBook) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - tx, dy = t.clientY - ty;
+      /* 放大态下允许上下滚动阅读，只有明确的横向滑动才翻页 */
+      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      if (tScroll && stage.scrollWidth <= stage.clientWidth + 2) { /* 仍按翻页处理 */ }
+      rdGoto(rdPage + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+    stage.addEventListener('click', function (e) {
+      if (e.target.id !== 'slImg') return;
+      RD.querySelector('#pdfSlice').classList.toggle('zoomed');
+    });
+    RD.querySelector('#slPrev').addEventListener('click', function () { rdGoto(rdPage - 1); });
+    RD.querySelector('#slNext').addEventListener('click', function () { rdGoto(rdPage + 1); });
+    RD.querySelector('#slNum').addEventListener('change', function (e) { rdGoto(e.target.value); });
+    RD.querySelector('#slImg').addEventListener('load', function () {
+      this.classList.remove('loading');
+    });
+    RD.querySelector('#slImg').addEventListener('error', function () {
+      this.classList.remove('loading');
+      rdSliceFail(RD, this);
     });
     return RD;
   }
@@ -339,6 +390,10 @@
       [f.sub, f.pages ? f.pages + ' 页' : '', fmtSize(f.size)].filter(Boolean).join('　·　');
     w.querySelector('#pdfNew').href = f.file;
     w.querySelector('#pdfDl').href = f.file;
+    /* 有切片就走切片阅读器：绝不能先把 iframe.src 挂上，否则等于让手机先啃 63 MB */
+    if (rdHasSlices(f)) { rdOpenSlices(w, f); return; }
+    w.querySelector('#pdfSlice').hidden = true;
+    w.querySelector('#pdfFrame').hidden = false;
     var st = w.querySelector('#pdfStatus');
     st.hidden = false;
     st.textContent = '正在打开…' + fmtSize(f.size) + (f.pages ? ' / ' + f.pages + ' 页' : '') +
@@ -470,6 +525,98 @@
       '</div>';
   }
 
+  /* ------------------------------ 切片阅读器（大部头扫描教材） ------------------------------
+     为什么需要：手机浏览器（国产浏览器 / 微信内置浏览器等）经常不给 iframe 里的 PDF 渲染，
+     有的干脆拦截成下载；63 MB 的扫描件就算能渲染，也得先啃完整个文件才有第一页。
+     pdf-slices.py 把每页预先渲成 WebP（40~70 KB），这里一页一张图地翻：
+     不依赖任何浏览器 PDF 能力，翻一页只传几十 KB，关掉就释放。 */
+  function rdHasSlices(f) {
+    var m = SLICES[f && f.id];
+    return !!(m && m.pages && m.dir);
+  }
+
+  function rdImgSrc(m, p) {
+    return m.dir + '/p' + ('000' + p).slice(-4) + '.' + (m.ext || 'webp');
+  }
+
+  function rdOpenSlices(w, f) {
+    var m = SLICES[f.id];
+    var total = m.pages;
+    rdCur = f; rdBook = m; rdLoaded = true; rdFailed = false; rdNetFail = false;
+    clearTimeout(rdTimer);
+    var num = w.querySelector('#slNum');
+    num.max = String(total);
+    num.value = '1';
+    w.querySelector('#slTot').textContent = String(total);
+    w.querySelector('#pdfStatus').hidden = true;
+    w.querySelector('#pdfFrame').hidden = true;
+    w.querySelector('#pdfFrame').src = 'about:blank';
+    var sl = w.querySelector('#pdfSlice');
+    sl.hidden = false;
+    sl.classList.remove('zoomed');
+    w.querySelector('#pdfTip').innerHTML = '左右滑动翻页，点图可放大细看；' +
+      '要搜索或复制公式，点右上角「新窗口」开原版 PDF。';
+    /* 上次读到哪一页就接着读（localStorage 不可用时静默忽略） */
+    var p = 0;
+    try { p = parseInt(global.localStorage.getItem('zb-page:' + f.id) || '0', 10) || 0; } catch (e) { }
+    w.hidden = false;
+    rdOpen = true;
+    document.documentElement.classList.add('pdf-lock');
+    try { history.pushState({ pdf: f.id }, '', '#read=' + encodeURIComponent(f.id)); } catch (e) { }
+    rdShowPage(w, p > 0 ? Math.min(p, total) : 1);
+  }
+
+  function rdShowPage(w, p) {
+    var m = rdBook;
+    if (!m || !w) return;
+    var total = m.pages;
+    p = Math.min(Math.max(parseInt(p, 10) || 1, 1), total);
+    rdPage = p;
+    var img = w.querySelector('#slImg');
+    w.querySelector('#slNum').value = String(p);
+    w.querySelector('#slPrev').disabled = p <= 1;
+    w.querySelector('#slNext').disabled = p >= total;
+    w.querySelector('#slBadge').textContent = p + ' / ' + total;
+    img.classList.remove('bad');
+    img.classList.add('loading');
+    img.src = rdImgSrc(m, p);
+    if (rdCur) { try { global.localStorage.setItem('zb-page:' + rdCur.id, String(p)); } catch (e) { } }
+    rdPreload(p + 1); rdPreload(p - 1);
+  }
+
+  /* 预热相邻两页，滑动翻页才不会有等待感 */
+  function rdPreload(p) {
+    var m = rdBook;
+    if (!m || p < 1 || p > m.pages) return;
+    var im = new Image();
+    im.src = rdImgSrc(m, p);
+  }
+
+  function rdGoto(p) {
+    if (!rdBook || !RD) return;
+    var sl = RD.querySelector('#pdfSlice');
+    if (sl) sl.classList.remove('zoomed');
+    var st = RD.querySelector('#pdfStatus');
+    if (st) st.hidden = true;
+    rdShowPage(RD, p);
+  }
+
+  function rdSliceFail(w, img) {
+    img.classList.add('bad');
+    var st = w.querySelector('#pdfStatus');
+    st.hidden = false;
+    st.innerHTML = '<div class="pdf-slow">' +
+      '<span>这一页的图片没取到，多半是网络抖了一下。</span>' +
+      '<span class="pdf-slow-acts">' +
+        '<button class="pdf-btn primary" type="button" data-rd-retry>' +
+          svg('read', 13) + '<span>重试本页</span></button>' +
+        '<button class="pdf-btn" type="button" data-rd-restart>' +
+          svg('up', 13) + '<span>回到第 1 页</span></button>' +
+      '</span>' +
+      '<span class="pdf-slow-tip">也可以点右上角「新窗口」，用系统阅读器打开原版 PDF。</span>' +
+      '</div>';
+  }
+
   function rdClose(fromHistory) {
     if (!rdOpen) return;
     rdOpen = false;
@@ -483,6 +630,10 @@
     if (w) {
       /* 先把 iframe 导航走，几十 MB 的 PDF 内存才能还给浏览器 */
       w.querySelector('#pdfFrame').src = 'about:blank';
+      /* 切片同理：src 置空让解码器把这张图回收掉 */
+      var im = w.querySelector('#slImg');
+      if (im) { im.src = ''; im.classList.remove('bad', 'loading'); }
+      rdBook = null; rdPage = 1;
       w.hidden = true;
     }
     document.documentElement.classList.remove('pdf-lock');
@@ -514,6 +665,13 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { rdClose(false); return; }
+    /* 切片阅读器：翻页快捷键（桌面端 ↑↓/PgUp/PgDn/Home/End） */
+    if (rdOpen && rdBook) {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); rdGoto(rdPage + 1); return; }
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); rdGoto(rdPage - 1); return; }
+      if (e.key === 'Home') { e.preventDefault(); rdGoto(1); return; }
+      if (e.key === 'End') { e.preventDefault(); rdGoto(rdBook.pages); return; }
+    }
     if ((e.key === 'Enter' || e.key === ' ') && e.target &&
         e.target.classList && e.target.classList.contains('dl-row')) {
       e.preventDefault();
